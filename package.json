@@ -1,0 +1,39 @@
+{
+  "name": "extract-dealmakers",
+  "version": "1.0.0",
+  "description": "Script para extraer perfiles de LinkedIn desde deals y crear contactos en HubSpot",
+  "main": "extract-dealmakers.js",
+  "scripts": {
+    "start": "node extract-dealmakers.js",
+    "extract-dealmakers": "node extract-dealmakers.js",
+    "diagnose": "node diagnose-deals.js",
+    "inspect": "node inspect-deal.js",
+    "test-contact": "node test-contact.js",
+    "test-openai": "node test-openai.js",
+    "test-apify": "node test-apify-data.js",
+    "list-pipelines": "node list-pipelines.js",
+    "test-profile": "node test-profile-detail.js",
+    "manage-weekly-limit": "node manage-weekly-limit.js",
+    "test-filtering": "node test-filtering.js",
+    "test-formats": "node test-profile-formats.js",
+    "test-associations": "node test-associations.js",
+    "return-moved-deals": "node return-moved-deals.js",
+    "reset": "node reset-deals.js"
+  },
+  "keywords": [
+    "linkedin",
+    "apify",
+    "hubspot",
+    "contacts",
+    "deals",
+    "scraping"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "apify-client": "^2.8.2",
+    "axios": "^1.6.2",
+    "dotenv": "^16.3.1",
+    "openai": "^4.28.0"
+  }
+}

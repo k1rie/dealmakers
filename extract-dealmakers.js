@@ -258,71 +258,81 @@ class ExtractDealmakers {
   async extractProfileUrlsFromDeals(deals) {
     const profileUrls = new Map();
 
-    console.log(`   👤 Extrayendo perfiles de ${deals.length} deals...`);
+    console.log(`   👤 Extrayendo perfiles del DUEÑO del post de ${deals.length} deals...`);
 
     for (const deal of deals) {
       const props = deal.properties || {};
       const description = props.description?.value || props.description || '';
 
-        if (description) {
-          // Buscar específicamente perfiles
+      if (description) {
+        let profileMatches = [];
+
+        // PRIORIDAD 1: Extraer perfiles desde URLs de posts (dueño del post)
+        console.log(`   🔍 Buscando URLs de posts en deal ${deal.id}...`);
+        const postLinks = description.match(/https?:\/\/(?:www\.)?linkedin\.com\/posts\/[^\s<>"']+/gi) || [];
+        console.log(`   📝 Encontradas ${postLinks.length} URLs de posts`);
+
+        postLinks.forEach(postLink => {
+          const username = this.extractUsernameFromPostUrl(postLink);
+          if (username) {
+            const profileUrl = `https://www.linkedin.com/in/${username}`;
+            console.log(`   👤 Extraído perfil del autor: ${profileUrl} (de ${postLink})`);
+            profileMatches.push(profileUrl);
+          } else {
+            console.log(`   ⚠️ No se pudo extraer username de: ${postLink}`);
+          }
+        });
+
+        // REMOVIDO: Ya no busca en link_original_de_la_noticia, solo en descripción
+
+        // PRIORIDAD 3: Si aún no hay perfil, buscar específicamente perfiles (solo como fallback)
+        if (profileMatches.length === 0) {
+          console.log(`   ⚠️ No se encontraron URLs de posts. Buscando perfiles mencionados...`);
           const profilePatterns = [
             /https?:\/\/(?:www\.)?linkedin\.com\/in\/[^\/\s<>"'\?\#]+/gi,
             /https?:\/\/(?:www\.)?linkedin\.com\/company\/[^\/\s<>"'\?\#]+/gi,
-            /https?:\/\/(?:www\.)?linkedin\.com\/school\/[^\/\s<>"'\?\#]+/gi,
-            /https?:\/\/(?:www\.)?linkedin\.com\/pub\/[^\/\s<>"'\?\#]+/gi,
-            /https?:\/\/(?:www\.)?linkedin\.com\/people\/[^\/\s<>"'\?\#]+/gi
+            /https?:\/\/(?:www\.)?linkedin\.com\/school\/[^\/\s<>"'\?\#]+/gi
           ];
 
-          let profileMatches = [];
           profilePatterns.forEach(pattern => {
             const matches = description.match(pattern);
             if (matches) {
               profileMatches = profileMatches.concat(matches);
-            }
-          });
-
-          // Formato especial "Profile URL: [URL]"
-          const profileUrlFromFormat = description.match(/Profile URL:\s*(https?:\/\/(?:www\.)?linkedin\.com\/[^\s<>"']+)/gi);
-          if (profileUrlFromFormat) {
-            profileUrlFromFormat.forEach(formattedUrl => {
-              const urlMatch = formattedUrl.match(/Profile URL:\s*(https?:\/\/(?:www\.)?linkedin\.com\/[^\s<>"']+)/i);
-              if (urlMatch && urlMatch[1]) {
-                profileMatches.push(urlMatch[1]);
-              }
-            });
-          }
-
-          // Extraer perfiles desde URLs de posts
-          const postLinks = description.match(/https?:\/\/(?:www\.)?linkedin\.com\/posts\/[^\s<>"']+/gi) || [];
-          postLinks.forEach(postLink => {
-            const username = this.extractUsernameFromPostUrl(postLink);
-            if (username) {
-              const profileUrl = `https://www.linkedin.com/in/${username}`;
-              profileMatches.push(profileUrl);
-            }
-          });
-
-          // Eliminar duplicados y limpiar URLs
-          profileMatches = [...new Set(profileMatches)];
-
-          profileMatches.forEach(url => {
-            const cleanUrl = url.split('?')[0].split('#')[0];
-            if (!profileUrls.has(cleanUrl)) {
-              profileUrls.set(cleanUrl, {
-                url: cleanUrl,
-                sourceDeals: [deal.id],
-                dealNames: [deal.properties?.dealname || `Deal ${deal.id}`]
-              });
-            } else {
-              const existing = profileUrls.get(cleanUrl);
-              if (!existing.sourceDeals.includes(deal.id)) {
-                existing.sourceDeals.push(deal.id);
-                existing.dealNames.push(deal.properties?.dealname || `Deal ${deal.id}`);
-              }
+              console.log(`   📝 Encontrado perfil alternativo: ${matches[0]}`);
             }
           });
         }
+
+        // Solo tomar UNA URL por deal (la más relevante)
+        if (profileMatches.length > 1) {
+          console.log(`   ⚠️ Se encontraron ${profileMatches.length} URLs. Usando solo la primera (autor del post)`);
+        }
+
+        if (profileMatches.length > 0) {
+          const selectedUrl = profileMatches[0]; // Solo la primera/más relevante
+          const cleanUrl = selectedUrl.split('?')[0].split('#')[0];
+
+          if (!profileUrls.has(cleanUrl)) {
+            profileUrls.set(cleanUrl, {
+              url: cleanUrl,
+              sourceDeals: [deal.id],
+              dealNames: [deal.properties?.dealname || `Deal ${deal.id}`]
+            });
+            console.log(`   ✅ Deal ${deal.id} → ${cleanUrl}`);
+          } else {
+            const existing = profileUrls.get(cleanUrl);
+            if (!existing.sourceDeals.includes(deal.id)) {
+              existing.sourceDeals.push(deal.id);
+              existing.dealNames.push(deal.properties?.dealname || `Deal ${deal.id}`);
+              console.log(`   ✅ Deal ${deal.id} → ${cleanUrl} (ya existía)`);
+            }
+          }
+        } else {
+          console.log(`   ❌ Deal ${deal.id}: No se encontró perfil de LinkedIn`);
+        }
+      } else {
+        console.log(`   ❌ Deal ${deal.id}: Sin descripción`);
+      }
     }
 
     const result = Array.from(profileUrls.values());

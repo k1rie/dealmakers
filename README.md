@@ -55,10 +55,14 @@ MAX_DEALS_PER_WEEK=1000
 
 ### 📊 Lógica de Procesamiento de Deals
 - **Evaluación individual**: Cada deal se evalúa por separado según si creó un contacto exitosamente
-- **Mapeo directo**: Deal → URLs extraídas → Resultado de Apify → Contacto creado
-- **Stage correcto**: Si alguna URL del deal creó contacto → va a "11P Agregado en Linkedin"
-- **Descartados**: Si ninguna URL del deal creó contacto → va a "Perdido / Descartado"
-- **Ejemplo**: Si procesas 3 deals y solo 1 creó contacto, solo ese deal va al stage correcto
+- **Enfoque en autor**: Solo procesa el perfil del DUEÑO/AUTOR del post de LinkedIn
+- **1 perfil por deal**: Cada deal procesa máximo 1 perfil (el del autor)
+- **Búsqueda exclusiva en descripción**: Solo busca URLs en el campo descripción del deal
+- **Priorización**:
+  1. URLs de posts en descripción → perfil del autor
+  2. URLs de perfil mencionadas en descripción (solo como fallback)
+- **Stage correcto**: Si el perfil del autor creó contacto → va a "11P Agregado en Linkedin"
+- **Descartados**: Si falló crear contacto del autor → va a "Perdido / Descartado"
 
 - ✅ Extracción automática de URLs de LinkedIn desde deals
 - ✅ Filtrado de perfiles existentes

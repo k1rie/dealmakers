@@ -1036,9 +1036,10 @@ class ExtractDealmakers {
       // 7. Actualizar tracking semanal
       await this.updateWeeklyLimit(contactResults.created + contactResults.updated);
 
-      // 8. LÓGICA PRECISA: Cada deal se evalúa según si creó contacto exitosamente
+      // 8. LÓGICA PRECISA: Cada deal se evalúa según si procesó contacto exitosamente (creado O actualizado)
       console.log('📊 Paso 8: Determinando stage final de cada deal...');
       console.log(`📊 Contactos creados: ${contactResults.created}`);
+      console.log(`📊 Contactos actualizados: ${contactResults.updated}`);
       console.log(`📊 URLs procesadas exitosamente: ${successfullyProcessedUrls.size}`);
 
       const successfullyProcessedDeals = [];
@@ -1053,15 +1054,15 @@ class ExtractDealmakers {
         console.log(`🔍 Verificando deal ${dealId}: ${dealName}`);
         console.log(`   URLs asociadas: ${dealUrls.length > 0 ? dealUrls.join(', ') : 'ninguna'}`);
 
-        // Verificar si alguna URL del deal creó un contacto exitosamente
+        // Verificar si alguna URL del deal procesó un contacto exitosamente (creado o actualizado)
         let dealProcessedSuccessfully = false;
         for (const url of dealUrls) {
           if (successfullyProcessedUrls.has(url)) {
             dealProcessedSuccessfully = true;
-            console.log(`   ✅ URL "${url}" creó contacto exitosamente`);
+            console.log(`   ✅ URL "${url}" procesó contacto exitosamente (creado/actualizado)`);
             break;
           } else {
-            console.log(`   ❌ URL "${url}" no creó contacto`);
+            console.log(`   ❌ URL "${url}" no procesó contacto`);
           }
         }
 

@@ -31,6 +31,7 @@ npm run manage-weekly-limit
 - `npm run move-to-success-stage` - **✅ Mover deals exitosos al stage correcto (pipeline específica)**
 - `npm run count-discarded-posts` - **📊 Contar deals de posts en descartados (pipeline específica)**
 - `npm run fix-recent-discarded` - **🔧 Corregir deals movidos incorrectamente a descartados**
+- `npm run fix-updated-contact-deal` - **🔄 Corregir deal movido por actualización de contacto**
 - `npm run check-post-in-hubspot` - **🔍 Verificar si un post específico existe en HubSpot**
 
 ## ⚙️ Configuración
@@ -54,15 +55,16 @@ MAX_DEALS_PER_WEEK=1000
 ## 🎯 Funcionalidades
 
 ### 📊 Lógica de Procesamiento de Deals
-- **Evaluación individual**: Cada deal se evalúa por separado según si creó un contacto exitosamente
+- **Evaluación individual**: Cada deal se evalúa por separado según si procesó un contacto exitosamente
+- **Éxito = Creado O Actualizado**: Tanto crear un nuevo contacto como actualizar uno existente se consideran éxito
 - **Enfoque en autor**: Solo procesa el perfil del DUEÑO/AUTOR del post de LinkedIn
 - **1 perfil por deal**: Cada deal procesa máximo 1 perfil (el del autor)
 - **Búsqueda exclusiva en descripción**: Solo busca URLs en el campo descripción del deal
 - **Priorización**:
   1. URLs de posts en descripción → perfil del autor
   2. URLs de perfil mencionadas en descripción (solo como fallback)
-- **Stage correcto**: Si el perfil del autor creó contacto → va a "11P Agregado en Linkedin"
-- **Descartados**: Si falló crear contacto del autor → va a "Perdido / Descartado"
+- **Stage correcto**: Si el perfil del autor procesó contacto (creado/actualizado) → va a "11P Agregado en Linkedin"
+- **Descartados**: Si falló procesar contacto del autor → va a "Perdido / Descartado"
 
 - ✅ Extracción automática de URLs de LinkedIn desde deals
 - ✅ Filtrado de perfiles existentes

@@ -30,6 +30,7 @@
     "move-to-success-stage": "node move-to-success-stage.js",
     "count-discarded-posts": "node count-discarded-posts.js",
     "fix-recent-discarded": "node fix-recent-discarded.js",
+    "fix-updated-contact-deal": "node fix-updated-contact-deal.js",
     "reset": "node reset-deals.js"
   },
   "keywords": [

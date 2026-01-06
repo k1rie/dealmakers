@@ -64,15 +64,15 @@ async function getDealsToReturn() {
       const response = await axios.post(
         `${HUBSPOT_BASE_URL}/crm/v3/objects/deals/search`,
         params,
-        {
-          headers: {
-            'Authorization': `Bearer ${HUBSPOT_TOKEN}`,
-            'Content-Type': 'application/json'
-          }
+      {
+        headers: {
+          'Authorization': `Bearer ${HUBSPOT_TOKEN}`,
+          'Content-Type': 'application/json'
         }
-      );
+      }
+    );
 
-      const deals = response.data.results || [];
+    const deals = response.data.results || [];
       allDeals = allDeals.concat(deals);
 
       after = response.data.paging?.next?.after;

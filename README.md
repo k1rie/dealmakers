@@ -27,6 +27,7 @@ npm run manage-weekly-limit
 - `npm run remove-duplicates` - **Eliminar posts duplicados (uno por persona)**
 - `npm run remove-all-posts` - **🗑️ Eliminar TODOS los posts de linkedin-posts-apify**
 - `npm run return-moved-deals` - Devolver deals al stage original
+- `npm run check-post-in-hubspot` - **🔍 Verificar si un post específico existe en HubSpot**
 
 ## ⚙️ Configuración
 
@@ -94,6 +95,30 @@ Cuando un perfil tiene datos pero no nombre:
   posicion: "VP Business Development",
   compania: "Amaryllis Payment Solutions"
 }
+```
+
+## 🔍 Verificación de Posts Específicos en HubSpot
+
+Para verificar si un post específico de LinkedIn fue procesado y creó un deal en HubSpot:
+
+```bash
+npm run check-post-in-hubspot
+```
+
+### ✅ ¿Qué hace?
+- Busca deals que contengan la URL específica del post
+- Muestra detalles del deal si existe
+- Lista contactos asociados al deal
+- Compara con otros deals de LinkedIn para contexto
+
+### 🎯 Ejemplo de uso:
+```javascript
+// Busca este post específico:
+https://www.linkedin.com/posts/pamela-meneses-silva-67710136_kindergarten-box-activity-7402773489595686912-RVzb
+
+// Resultado posible:
+// ✅ ¡SÍ ENCONTRADO! Deal: "Post: Pamela Meneses Silva - Post LinkedIn"
+// 👥 Contacto asociado: pamela.meneses@email.com
 ```
 
 ## 🔄 Devolución de Deals Movidos por Error

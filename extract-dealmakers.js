@@ -11,7 +11,7 @@ const OpenAI = require('openai');
 const HUBSPOT_TOKEN = process.env.HUBSPOT_TOKEN;
 const APIFY_TOKEN = process.env.APIFY_TOKEN;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const MAX_DEALS_PER_WEEK = parseInt(process.env.MAX_DEALS_PER_WEEK) || 100;
+const MAX_DEALS_PER_WEEK = parseInt(process.env.MAX_DEALS_PER_WEEK) || 1000;
 const HUBSPOT_BASE_URL = 'https://api.hubapi.com';
 
 // Actor ID de Apify para LinkedIn Profile Scraper
@@ -728,13 +728,22 @@ class ExtractDealmakers {
     try {
       // 1. Verificar límite semanal ANTES de descargar deals
       console.log('📊 Paso 1: Verificando límite semanal...');
-      const weeklyLimitCheck = await this.checkWeeklyLimit(0);
-      if (weeklyLimitCheck === 0) {
-        console.log('❌ Límite semanal alcanzado (0 deals disponibles)');
+      console.log(`📊 Configuración: MAX_DEALS_PER_WEEK=${MAX_DEALS_PER_WEEK}`);
+
+      // Verificar si el límite semanal está configurado correctamente
+      if (MAX_DEALS_PER_WEEK <= 0) {
+        console.log('❌ ERROR: MAX_DEALS_PER_WEEK debe ser mayor a 0');
+        console.log('💡 Configure la variable de entorno MAX_DEALS_PER_WEEK=1000 en Railway');
         return { contactResults: { created: 0, updated: 0, errors: 0 } };
       }
 
-      const maxDealsToDownload = weeklyLimitCheck === true ? 1000 : weeklyLimitCheck;
+      const weeklyLimitCheck = await this.checkWeeklyLimit(0);
+      if (weeklyLimitCheck === false) {
+        console.log('❌ Límite semanal alcanzado completamente');
+        return { contactResults: { created: 0, updated: 0, errors: 0 } };
+      }
+
+      const maxDealsToDownload = weeklyLimitCheck === true ? MAX_DEALS_PER_WEEK : weeklyLimitCheck;
       console.log(`📊 Límite semanal OK: ${maxDealsToDownload} deals disponibles\n`);
 
       // 2. Obtener deals con posts válidos (limitado)

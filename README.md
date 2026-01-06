@@ -41,7 +41,7 @@ APIFY_TOKEN=tu_token_de_apify
 OPENAI_API_KEY=tu_api_key
 
 # Límites
-MAX_DEALS_PER_WEEK=100
+MAX_DEALS_PER_WEEK=1000
 ```
 
 ## 🎯 Funcionalidades

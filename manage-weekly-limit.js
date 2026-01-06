@@ -5,11 +5,11 @@
  */
 
 require('dotenv').config();
-const fs = require('fs').promises();
+const fs = require('fs').promises;
 const path = require('path');
 
 const WEEKLY_TRACKING_FILE = path.join(__dirname, 'weekly-tracking.json');
-const MAX_DEALS_PER_WEEK = parseInt(process.env.MAX_DEALS_PER_WEEK) || 100;
+const MAX_DEALS_PER_WEEK = parseInt(process.env.MAX_DEALS_PER_WEEK) || 1000;
 
 /**
  * Obtener la semana actual

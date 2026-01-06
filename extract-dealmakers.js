@@ -41,6 +41,7 @@ class ExtractDealmakers {
     this.createdContacts = 0;
     this.updatedContacts = 0;
     this.errors = 0;
+    this.updatedUrls = new Set();
     this.personProfiles = 0;
     this.companyProfiles = 0;
     this.weeklyLimitReached = false;
@@ -717,6 +718,7 @@ class ExtractDealmakers {
           await this.updateExistingContact(existingContact, this.prepareContactData(normalizedProfile));
           updated++;
           processedUrls.add(linkedinUrl); // Marcar como procesada exitosamente
+          this.updatedUrls.add(linkedinUrl); // Marcar como actualizada exitosamente
 
           // Crear asociaciones para contacto existente
           if (profileUrlObjects) {
@@ -823,7 +825,7 @@ class ExtractDealmakers {
       }
     }
 
-    return { created, updated, skipped, errors, processedUrls };
+    return { created, updated, skipped, errors, processedUrls, updatedUrls: this.updatedUrls };
   }
 
   /**
@@ -1026,7 +1028,10 @@ class ExtractDealmakers {
       // 6. Crear contactos
       console.log('💾 Paso 7: Creando contactos en HubSpot...');
       const contactResults = await this.createContactsInHubSpot(profileData, filteredProfileUrls);
-      const successfullyProcessedUrls = contactResults.processedUrls || new Set();
+      const successfullyProcessedUrls = new Set([
+        ...(contactResults.processedUrls || []),
+        ...(contactResults.updatedUrls || [])
+      ]);
 
       console.log(`✅ Creados ${contactResults.created} contactos`);
       console.log(`🔄 Actualizados: ${contactResults.updated}`);

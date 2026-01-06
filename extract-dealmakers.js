@@ -134,9 +134,10 @@ class ExtractDealmakers {
 
   /**
    * Buscar deals válidos en HubSpot
+   * @param {number} maxDeals - Máximo número de deals a obtener (opcional)
    */
-  async getDealsWithValidPosts() {
-    console.log(`🔍 [DEBUG] Buscando deals en pipeline ${PIPELINE_CONFIG.pipelineId}, stage ${PIPELINE_CONFIG.sourceStageId}`);
+  async getDealsWithValidPosts(maxDeals = null) {
+    console.log(`🔍 [DEBUG] Buscando deals en pipeline ${PIPELINE_CONFIG.pipelineId}, stage ${PIPELINE_CONFIG.sourceStageId}${maxDeals ? ` (máx. ${maxDeals})` : ''}`);
 
     try {
       let allDeals = [];
@@ -186,6 +187,19 @@ class ExtractDealmakers {
 
         after = response.data.paging?.next?.after;
         console.log(`📄 [DEBUG] Página obtenida: ${deals.length} deals (total: ${allDeals.length})`);
+
+        // Verificar límite máximo de deals si está especificado
+        if (maxDeals && allDeals.length >= maxDeals) {
+          console.log(`📊 [DEBUG] Límite máximo alcanzado (${maxDeals} deals), deteniendo descarga`);
+          allDeals = allDeals.slice(0, maxDeals);
+          after = null; // Detener paginación
+        }
+
+        // Agregar delay entre peticiones para evitar rate limiting de HubSpot
+        if (after) {
+          console.log(`⏳ [DEBUG] Esperando 3 segundos antes de la siguiente página...`);
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
 
       } while (after);
 
@@ -712,9 +726,20 @@ class ExtractDealmakers {
     console.log('='.repeat(100));
 
     try {
-      // 1. Obtener deals con posts válidos
-      console.log('📋 Paso 1: Buscando deals con links de posts válidos...');
-      const dealsWithPosts = await this.getDealsWithValidPosts();
+      // 1. Verificar límite semanal ANTES de descargar deals
+      console.log('📊 Paso 1: Verificando límite semanal...');
+      const weeklyLimitCheck = await this.checkWeeklyLimit(0);
+      if (weeklyLimitCheck === 0) {
+        console.log('❌ Límite semanal alcanzado (0 deals disponibles)');
+        return { contactResults: { created: 0, updated: 0, errors: 0 } };
+      }
+
+      const maxDealsToDownload = weeklyLimitCheck === true ? 1000 : weeklyLimitCheck;
+      console.log(`📊 Límite semanal OK: ${maxDealsToDownload} deals disponibles\n`);
+
+      // 2. Obtener deals con posts válidos (limitado)
+      console.log('📋 Paso 2: Buscando deals con links de posts válidos...');
+      const dealsWithPosts = await this.getDealsWithValidPosts(maxDealsToDownload);
 
       if (dealsWithPosts.length === 0) {
         console.log('❌ No se encontraron deals con links de posts válidos');
@@ -723,7 +748,7 @@ class ExtractDealmakers {
 
       console.log(`✅ Encontrados ${dealsWithPosts.length} deals con posts válidos\n`);
 
-      // 2. Verificar límite semanal
+      // 3. Verificar límite semanal final
       const allowedDeals = await this.checkWeeklyLimit(dealsWithPosts.length);
       if (!allowedDeals || allowedDeals === 0) {
         console.log('❌ Límite semanal alcanzado');
@@ -733,8 +758,8 @@ class ExtractDealmakers {
       const dealsToProcess = allowedDeals === true ? dealsWithPosts : dealsWithPosts.slice(0, allowedDeals);
       console.log(`📊 Procesando ${dealsToProcess.length} deals (límite semanal)\n`);
 
-      // 3. Extraer URLs de perfiles
-      console.log('👤 Paso 2: Extrayendo URLs de perfiles...');
+      // 4. Extraer URLs de perfiles
+      console.log('👤 Paso 4: Extrayendo URLs de perfiles...');
       const profileUrls = await this.extractProfileUrlsFromDeals(dealsToProcess);
 
       if (profileUrls.length === 0) {
@@ -745,7 +770,7 @@ class ExtractDealmakers {
       console.log(`✅ Extraídas ${profileUrls.length} URLs de perfiles únicas\n`);
 
       // 4. Filtrar URLs existentes
-      console.log('🔍 Paso 3: Filtrando URLs que ya existen...');
+      console.log('🔍 Paso 5: Filtrando URLs que ya existen...');
       const filteredProfileUrls = await this.filterExistingProfileUrls(profileUrls);
 
       if (filteredProfileUrls.length === 0) {
@@ -756,7 +781,7 @@ class ExtractDealmakers {
       console.log(`✅ ${filteredProfileUrls.length} URLs nuevas para procesar\n`);
 
       // 5. Scraping con Apify
-      console.log('🔍 Paso 4: Procesando URLs con Apify...');
+      console.log('🔍 Paso 6: Procesando URLs con Apify...');
       const profileData = await this.scrapeProfilesWithApify(filteredProfileUrls);
 
       if (profileData.length === 0) {
@@ -767,7 +792,7 @@ class ExtractDealmakers {
       console.log(`✅ Apify procesó ${profileData.length} perfiles\n`);
 
       // 6. Crear contactos
-      console.log('💾 Paso 5: Creando contactos en HubSpot...');
+      console.log('💾 Paso 7: Creando contactos en HubSpot...');
       const contactResults = await this.createContactsInHubSpot(profileData, filteredProfileUrls);
 
       console.log(`✅ Creados ${contactResults.created} contactos`);
@@ -781,7 +806,7 @@ class ExtractDealmakers {
       // 8. Mover deals procesados
       const successfullyProcessedDeals = dealsToProcess; // Simplificado
       if (successfullyProcessedDeals.length > 0) {
-        console.log('📊 Paso 6: Moviendo deals procesados...');
+        console.log('📊 Paso 8: Moviendo deals procesados...');
         await this.moveDealsTo11PDM(successfullyProcessedDeals);
       }
 

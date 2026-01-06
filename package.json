@@ -14,6 +14,8 @@
     "list-pipelines": "node list-pipelines.js",
     "test-profile": "node test-profile-detail.js",
     "manage-weekly-limit": "node manage-weekly-limit.js",
+    "remove-duplicates": "node remove-duplicate-posts.js",
+    "remove-all-posts": "node remove-all-posts.js",
     "test-filtering": "node test-filtering.js",
     "test-formats": "node test-profile-formats.js",
     "test-associations": "node test-associations.js",

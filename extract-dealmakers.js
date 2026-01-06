@@ -500,10 +500,19 @@ class ExtractDealmakers {
    * Preparar datos del contacto
    */
   prepareContactData(profile) {
+    const firstname = profile.firstName || 'Sin nombre';
+    const lastname = profile.lastName || '';
+
+    console.log(`   📝 Preparando datos del contacto:`);
+    console.log(`      • Nombre: "${firstname}"`);
+    console.log(`      • Apellido: "${lastname}"`);
+    console.log(`      • Posición: "${profile.position || 'No especificado'}"`);
+    console.log(`      • Compañía: "${profile.company || 'No especificado'}"`);
+
     return {
       properties: {
-        firstname: profile.firstName || 'Sin nombre',
-        lastname: profile.lastName || '',
+        firstname: firstname,
+        lastname: lastname,
         linkedin_profile_link: profile.linkedinUrl,
         jobtitle: profile.position,
         company: profile.company,
@@ -598,6 +607,17 @@ class ExtractDealmakers {
         const linkedinUrl = normalizedProfile.linkedinUrl;
 
         console.log(`   👤 Procesando perfil: ${profileName}`);
+        console.log(`   🔗 URL: ${linkedinUrl}`);
+
+        // Mostrar diagnóstico si faltan datos importantes
+        if (!normalizedProfile.name || !normalizedProfile.firstName) {
+          console.log(`   ⚠️  Datos faltantes del perfil Apify:`);
+          console.log(`      • Nombre completo: "${normalizedProfile.name || 'VACÍO'}"`);
+          console.log(`      • First name: "${normalizedProfile.firstName || 'VACÍO'}"`);
+          console.log(`      • Last name: "${normalizedProfile.lastName || 'VACÍO'}"`);
+          console.log(`      • Posición: "${normalizedProfile.position || 'VACÍO'}"`);
+          console.log(`   📋 Datos crudos de Apify:`, JSON.stringify(profile, null, 2));
+        }
 
         if (!linkedinUrl) {
           console.log(`   ⏭️  Saltando perfil sin URL`);
@@ -637,8 +657,11 @@ class ExtractDealmakers {
         console.log(`   👤 Perfil de persona confirmado: ${profileName}`);
 
         const contactData = this.prepareContactData(normalizedProfile);
-        if (!contactData.properties.firstname && !contactData.properties.lastname) {
-          console.log(`   ⏭️  Saltando perfil sin nombre válido`);
+        if (!contactData.properties.firstname ||
+            contactData.properties.firstname === 'Sin nombre' ||
+            !contactData.properties.firstname.trim()) {
+          console.log(`   ❌ SALTANDO: Perfil sin nombre válido (posible error de scraping Apify)`);
+          console.log(`   📋 Datos incompletos del perfil Apify:`, JSON.stringify(normalizedProfile, null, 2));
           skipped++;
           continue;
         }

@@ -23,6 +23,8 @@
     "test-associations": "node test-associations.js",
     "return-moved-deals": "node return-moved-deals.js",
     "check-moved-deals": "node check-moved-deals-with-contacts.js",
+    "check-source-deals": "node check-source-stage-deals.js",
+    "check-discarded-deals": "node check-discarded-deals.js",
     "fix-missing-contacts": "node fix-missing-contacts.js",
     "reset": "node reset-deals.js"
   },

@@ -495,10 +495,24 @@ class ExtractDealmakers {
       }
     }
 
+    // Si aún no tenemos nombre, intentar construirlo desde firstName y lastName
+    let finalName = extractedName;
+    if (!finalName) {
+      const firstName = this.normalizeString(profile.firstName);
+      const lastName = this.normalizeString(profile.lastName);
+      if (firstName && lastName) {
+        finalName = `${firstName} ${lastName}`;
+      } else if (firstName) {
+        finalName = firstName;
+      } else if (lastName) {
+        finalName = lastName;
+      }
+    }
+
     return {
-      name: this.normalizeString(extractedName),
-      firstName: this.normalizeString(profile.firstName || extractedName?.split(' ')[0]),
-      lastName: this.normalizeString(profile.lastName || extractedName?.split(' ').slice(1).join(' ')),
+      name: this.normalizeString(finalName),
+      firstName: this.normalizeString(profile.firstName || finalName?.split(' ')[0]),
+      lastName: this.normalizeString(profile.lastName || finalName?.split(' ').slice(1).join(' ')),
       position: this.normalizeString(profile.position || profile.currentPosition || profile.title),
       company: this.normalizeString(profile.company || profile.currentCompany),
       location: this.normalizeString(profile.location),
@@ -632,10 +646,23 @@ class ExtractDealmakers {
         // Mostrar diagnóstico detallado de datos disponibles
         console.log(`   📊 Datos disponibles:`);
         console.log(`      • Nombre completo: "${normalizedProfile.name || 'VACÍO'}"`);
+        console.log(`      • First Name (Apify): "${profile.firstName || 'VACÍO'}"`);
+        console.log(`      • Last Name (Apify): "${profile.lastName || 'VACÍO'}"`);
         console.log(`      • Posición: "${normalizedProfile.position || 'VACÍO'}"`);
         console.log(`      • Compañía: "${normalizedProfile.company || 'VACÍO'}"`);
         console.log(`      • Experiencia laboral: ${profile.experience ? profile.experience.length + ' entradas' : 'VACÍO'}`);
         console.log(`      • Educación: ${profile.education ? profile.education.length + ' entradas' : 'VACÍO'}`);
+
+        // Mostrar cómo se construyó el nombre
+        if (normalizedProfile.name) {
+          if (profile.firstName || profile.lastName) {
+            console.log(`   ✅ Nombre construido desde firstName/lastName de Apify`);
+          } else if (profile.name || profile.fullName) {
+            console.log(`   ✅ Nombre obtenido directamente del campo 'name' de Apify`);
+          } else {
+            console.log(`   ✅ Nombre obtenido de campos alternativos de Apify`);
+          }
+        }
 
         // Si no tiene nombre pero sí tiene otros datos, mostrar warning
         if (!normalizedProfile.name && (profile.experience?.length > 0 || profile.education?.length > 0)) {
@@ -681,11 +708,20 @@ class ExtractDealmakers {
         console.log(`   👤 Perfil de persona confirmado: ${profileName}`);
 
         const contactData = this.prepareContactData(normalizedProfile);
-        if (!contactData.properties.firstname ||
-            contactData.properties.firstname === 'Sin nombre' ||
-            !contactData.properties.firstname.trim()) {
+
+        // Validar que tengamos algún tipo de nombre válido
+        const hasValidName = normalizedProfile.name && normalizedProfile.name.trim() &&
+                            normalizedProfile.name !== 'Sin nombre';
+        const hasValidFirstName = contactData.properties.firstname &&
+                                 contactData.properties.firstname !== 'Sin nombre' &&
+                                 contactData.properties.firstname.trim();
+
+        if (!hasValidName && !hasValidFirstName) {
           console.log(`   ❌ SALTANDO: Perfil sin nombre válido (Apify no pudo extraer el nombre)`);
           console.log(`   📋 Datos que SÍ tiene el perfil:`, {
+            nombre_completo: normalizedProfile.name || 'ninguno',
+            firstName: profile.firstName || 'ninguno',
+            lastName: profile.lastName || 'ninguno',
             experiencia: profile.experience?.length || 0,
             educacion: profile.education?.length || 0,
             posicion: normalizedProfile.position || 'ninguna',
@@ -694,6 +730,10 @@ class ExtractDealmakers {
           });
           skipped++;
           continue;
+        }
+
+        if (!hasValidName && hasValidFirstName) {
+          console.log(`   ⚠️  Usando solo firstName/lastName, nombre completo no disponible`);
         }
 
         console.log(`   🔄 Creando contacto para: ${profileName}`);

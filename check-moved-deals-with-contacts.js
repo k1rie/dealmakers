@@ -8,14 +8,15 @@ const HUBSPOT_BASE_URL = 'https://api.hubapi.com';
 
 const PIPELINE_CONFIG = {
   pipelineId: '654720623', // Pipeline: Proyectos
-  targetStageId: '1259550373' // 11P Agregado en Linkedin (donde se mueven los deals procesados)
+  targetStageId: '1259550373', // 11P Agregado en Linkedin (donde se mueven los deals procesados)
+  discardedStageId: '963342713' // Perdido / Descartado (stage de rechazados)
 };
 
 /**
  * Verificar deals que pasaron a la siguiente etapa (11P Agregado en Linkedin) y sus contactos asociados
  */
 async function checkMovedDealsWithContacts() {
-  console.log('🔍 Verificando deals que pasaron a 11P Agregado en Linkedin y sus contactos asociados...\n');
+  console.log('🔍 Verificando deals movidos (11P Agregado en Linkedin + Perdido/Descartado) y sus contactos asociados...\n');
 
   if (!HUBSPOT_TOKEN) {
     console.log('❌ Error: HUBSPOT_TOKEN no encontrado');
@@ -26,59 +27,74 @@ async function checkMovedDealsWithContacts() {
 
   try {
     console.log(`📊 Pipeline ID: ${PIPELINE_CONFIG.pipelineId} (Proyectos)`);
-    console.log(`📊 Stage ID destino: ${PIPELINE_CONFIG.targetStageId} (11P Agregado en Linkedin)\n`);
+    console.log(`📊 Stage destino: ${PIPELINE_CONFIG.targetStageId} (11P Agregado en Linkedin)`);
+    console.log(`📊 Stage descartado: ${PIPELINE_CONFIG.discardedStageId} (Perdido / Descartado)\n`);
 
-    // Obtener deals en el stage de destino (11P Agregado en Linkedin)
-    const response = await axios.post(
-      `${HUBSPOT_BASE_URL}/crm/v3/objects/deals/search`,
-      {
-        filterGroups: [
-          {
-            filters: [
-              {
-                propertyName: 'dealstage',
-                operator: 'EQ',
-                value: PIPELINE_CONFIG.targetStageId
-              },
-              {
-                propertyName: 'pipeline',
-                operator: 'EQ',
-                value: PIPELINE_CONFIG.pipelineId
-              }
-            ]
+    // Función auxiliar para obtener deals de un stage específico
+    async function getDealsFromStage(stageId, stageName) {
+      const response = await axios.post(
+        `${HUBSPOT_BASE_URL}/crm/v3/objects/deals/search`,
+        {
+          filterGroups: [
+            {
+              filters: [
+                {
+                  propertyName: 'dealstage',
+                  operator: 'EQ',
+                  value: stageId
+                },
+                {
+                  propertyName: 'pipeline',
+                  operator: 'EQ',
+                  value: PIPELINE_CONFIG.pipelineId
+                }
+              ]
+            }
+          ],
+          limit: 100, // Máximo 100 para análisis completo
+          properties: ['id', 'dealname', 'description', 'createdate', 'hs_lastmodifieddate', 'link_original_de_la_noticia']
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${HUBSPOT_TOKEN}`,
+            'Content-Type': 'application/json'
           }
-        ],
-        limit: 100, // Máximo 100 para análisis completo
-        properties: ['id', 'dealname', 'description', 'createdate', 'hs_lastmodifieddate', 'link_original_de_la_noticia']
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${HUBSPOT_TOKEN}`,
-          'Content-Type': 'application/json'
         }
-      }
-    );
+      );
 
-    const deals = response.data.results || [];
-    const totalDeals = deals.length;
+      return response.data.results || [];
+    }
+
+    // Obtener deals de ambos stages
+    console.log('🔄 Buscando deals en ambos stages...\n');
+
+    const targetDeals = await getDealsFromStage(PIPELINE_CONFIG.targetStageId, '11P Agregado en Linkedin');
+    const discardedDeals = await getDealsFromStage(PIPELINE_CONFIG.discardedStageId, 'Perdido / Descartado');
 
     console.log('📋 RESULTADOS:');
-    console.log(`Total de deals encontrados en 11P Agregado en Linkedin: ${totalDeals}\n`);
+    console.log(`Deals en 11P Agregado en Linkedin: ${targetDeals.length}`);
+    console.log(`Deals en Perdido/Descartado: ${discardedDeals.length}`);
+
+    // Combinar todos los deals movidos
+    const allMovedDeals = [...targetDeals, ...discardedDeals];
+    const totalDeals = allMovedDeals.length;
+
+    console.log(`Total de deals movidos: ${totalDeals}\n`);
 
     if (totalDeals === 0) {
-      console.log('✅ No hay deals en la etapa de destino. El pipeline está limpio.');
+      console.log('✅ No hay deals movidos en ninguno de los stages.');
       return;
     }
 
     // Filtrar deals que parecen ser de posts procesados por extract-dealmakers
     // Solo incluir deals con prefijo "Post:" en el nombre
-    const processedDeals = deals.filter(deal => {
+    const processedDeals = allMovedDeals.filter(deal => {
       const dealName = deal.properties?.dealname || '';
       return dealName.startsWith('Post:');
     });
 
     console.log(`🔗 Deals con prefijo "Post:": ${processedDeals.length}`);
-    console.log(`📝 Otros deals en el stage: ${totalDeals - processedDeals.length}\n`);
+    console.log(`📝 Otros deals movidos: ${totalDeals - processedDeals.length}\n`);
 
     let totalContactsAssociated = 0;
     let dealsWithContacts = 0;
@@ -186,9 +202,11 @@ async function checkMovedDealsWithContacts() {
     // Mostrar resumen final
     console.log('📊 RESUMEN FINAL:');
     console.log('='.repeat(50));
-    console.log(`- Total deals en 11P Agregado en Linkedin: ${totalDeals}`);
+    console.log(`- Deals en 11P Agregado en Linkedin: ${targetDeals.length}`);
+    console.log(`- Deals en Perdido/Descartado: ${discardedDeals.length}`);
+    console.log(`- Total deals movidos: ${totalDeals}`);
     console.log(`- Deals con prefijo "Post:": ${processedDeals.length}`);
-    console.log(`- Otros deals en el stage: ${totalDeals - processedDeals.length}`);
+    console.log(`- Otros deals movidos: ${totalDeals - processedDeals.length}`);
     console.log(`- Deals con contactos asociados: ${dealsWithContacts}`);
     console.log(`- Deals sin contactos asociados: ${dealsWithoutContacts}`);
     console.log(`- Total contactos asociados: ${totalContactsAssociated}`);
@@ -210,6 +228,7 @@ async function checkMovedDealsWithContacts() {
     console.log('\n💡 RECOMENDACIONES:');
     if (dealsWithoutContacts > 0) {
       console.log(`⚠️  ${dealsWithoutContacts} deals con prefijo "Post:" no tienen contactos asociados`);
+      console.log('   (Buscado en ambos stages: 11P Agregado en Linkedin + Perdido/Descartado)');
       console.log('   Ejecuta: npm run fix-missing-contacts (con tus tokens)');
     }
 

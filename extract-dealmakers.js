@@ -328,7 +328,18 @@ class ExtractDealmakers {
     const result = Array.from(profileUrls.values());
     console.log(`   📊 URLs de perfiles únicas encontradas: ${result.length}`);
 
-    return result;
+    // Crear mapa inverso: deal -> URLs
+    const dealToUrlsMap = new Map();
+    for (const profileInfo of result) {
+      for (const dealId of profileInfo.sourceDeals) {
+        if (!dealToUrlsMap.has(dealId)) {
+          dealToUrlsMap.set(dealId, []);
+        }
+        dealToUrlsMap.get(dealId).push(profileInfo.url);
+      }
+    }
+
+    return { profileUrls: result, dealToUrlsMap };
   }
 
   /**
@@ -969,9 +980,9 @@ class ExtractDealmakers {
       const dealsToProcess = allowedDeals === true ? dealsWithPosts : dealsWithPosts.slice(0, allowedDeals);
       console.log(`📊 Procesando ${dealsToProcess.length} deals (límite semanal)\n`);
 
-      // 4. Extraer URLs de perfiles
+      // 4. Extraer URLs de perfiles Y crear mapeo deal->URLs
       console.log('👤 Paso 4: Extrayendo URLs de perfiles...');
-      const profileUrls = await this.extractProfileUrlsFromDeals(dealsToProcess);
+      const { profileUrls, dealToUrlsMap } = await this.extractProfileUrlsFromDeals(dealsToProcess);
 
       if (profileUrls.length === 0) {
         console.log('❌ No se encontraron URLs de perfiles válidas');
@@ -1015,33 +1026,41 @@ class ExtractDealmakers {
       // 7. Actualizar tracking semanal
       await this.updateWeeklyLimit(contactResults.created + contactResults.updated);
 
-      // 8. LÓGICA PRECISA: Cada deal va según si creó contacto exitosamente
+      // 8. LÓGICA PRECISA: Cada deal se evalúa según si creó contacto exitosamente
       console.log('📊 Paso 8: Determinando stage final de cada deal...');
+      console.log(`📊 Contactos creados: ${contactResults.created}`);
       console.log(`📊 URLs procesadas exitosamente: ${successfullyProcessedUrls.size}`);
 
       const successfullyProcessedDeals = [];
       const failedDeals = [];
 
-      // Para cada deal del lote original, verificar si alguna de sus URLs creó un contacto
+      // Para cada deal, verificar si alguna de sus URLs creó un contacto exitosamente
       for (const deal of dealsToProcess) {
-        const dealUrls = this.extractUrlsFromDeal(deal);
-        const dealName = deal.properties?.dealname || `Deal ${deal.id}`;
+        const dealId = deal.id;
+        const dealName = deal.properties?.dealname || `Deal ${dealId}`;
+        const dealUrls = dealToUrlsMap.get(dealId) || [];
 
-        // Verificar si al menos una URL del deal creó un contacto exitosamente
+        console.log(`🔍 Verificando deal ${dealId}: ${dealName}`);
+        console.log(`   URLs asociadas: ${dealUrls.length > 0 ? dealUrls.join(', ') : 'ninguna'}`);
+
+        // Verificar si alguna URL del deal creó un contacto exitosamente
         let dealProcessedSuccessfully = false;
         for (const url of dealUrls) {
           if (successfullyProcessedUrls.has(url)) {
             dealProcessedSuccessfully = true;
+            console.log(`   ✅ URL "${url}" creó contacto exitosamente`);
             break;
+          } else {
+            console.log(`   ❌ URL "${url}" no creó contacto`);
           }
         }
 
         if (dealProcessedSuccessfully) {
           successfullyProcessedDeals.push(deal);
-          console.log(`✅ ${dealName} → stage de éxito (contacto creado)`);
+          console.log(`   🎯 RESULTADO: Deal va al stage de éxito\n`);
         } else {
           failedDeals.push(deal);
-          console.log(`❌ ${dealName} → descartados (sin contacto)`);
+          console.log(`   🎯 RESULTADO: Deal va a descartados\n`);
         }
       }
 

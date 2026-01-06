@@ -21,7 +21,8 @@ const LINKEDIN_PROFILE_ACTOR_ID = 'LpVuK3Zozwuipa5bp';
 const PIPELINE_CONFIG = {
   pipelineId: '654720623', // Pipeline: Proyectos
   sourceStageId: '1169433784', // 13P Posible Oportunidad (fuente de deals)
-  targetStageId: '1259550373' // 11P Agregado en Linkedin (destino)
+  targetStageId: '1259550373', // 11P Agregado en Linkedin (destino)
+  discardedStageId: '963342713' // Perdido / Descartado (para deals fallidos)
 };
 
 /**
@@ -633,6 +634,7 @@ class ExtractDealmakers {
     let updated = 0;
     let skipped = 0;
     let errors = 0;
+    const processedUrls = new Set(); // URLs que se procesaron exitosamente
 
     for (const profile of profileData) {
       try {
@@ -682,6 +684,7 @@ class ExtractDealmakers {
           console.log(`   🔄 Contacto existente encontrado (ID: ${existingContact.id})`);
           await this.updateExistingContact(existingContact, this.prepareContactData(normalizedProfile));
           updated++;
+          processedUrls.add(linkedinUrl); // Marcar como procesada exitosamente
 
           // Crear asociaciones para contacto existente
           if (profileUrlObjects) {
@@ -740,6 +743,7 @@ class ExtractDealmakers {
         const contactResponse = await this.createContact(contactData);
 
         created++;
+        processedUrls.add(linkedinUrl); // Marcar como procesada exitosamente
         console.log(`   ✅ Contacto creado: ${profileName} (ID: ${contactResponse.id})`);
 
         // Crear asociaciones
@@ -761,7 +765,7 @@ class ExtractDealmakers {
       }
     }
 
-    return { created, updated, skipped, errors };
+    return { created, updated, skipped, errors, processedUrls };
   }
 
   /**
@@ -804,6 +808,74 @@ class ExtractDealmakers {
       }
     }
 
+    return { moved, errors };
+  }
+
+  /**
+   * Extraer URLs de LinkedIn de un deal individual
+   */
+  extractUrlsFromDeal(deal) {
+    const urls = [];
+    const props = deal.properties || {};
+    const description = props.description || '';
+
+    // Buscar URLs de LinkedIn en la descripción
+    const linkedinRegex = /https?:\/\/(?:www\.)?linkedin\.com\/[^\s<>"']+/gi;
+    const linkedinUrls = description.match(linkedinRegex) || [];
+    urls.push(...linkedinUrls);
+
+    // También verificar el campo link_original_de_la_noticia
+    const postLink = props.link_original_de_la_noticia || '';
+    if (postLink && postLink.includes('linkedin.com')) {
+      urls.push(postLink);
+    }
+
+    return [...new Set(urls)]; // Eliminar duplicados
+  }
+
+  /**
+   * Mover deals fallidos al stage de descartados
+   */
+  async moveDealsToDiscarded(deals) {
+    const discardedStageId = PIPELINE_CONFIG.discardedStageId;
+
+    let moved = 0;
+    let errors = 0;
+
+    console.log(`   🗑️  Moviendo ${deals.length} deals fallidos al stage descartado ID: ${discardedStageId}`);
+
+    for (const deal of deals) {
+      try {
+        const dealName = deal.properties?.dealname || `Deal ${deal.id}`;
+        console.log(`      📤 Moviendo a descartados: ${dealName} (ID: ${deal.id})`);
+
+        await axios.patch(
+          `${HUBSPOT_BASE_URL}/crm/v3/objects/deals/${deal.id}`,
+          {
+            properties: {
+              dealstage: discardedStageId
+            }
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${HUBSPOT_TOKEN}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+
+        moved++;
+        console.log(`      ✅ Movido a descartados exitosamente`);
+
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+      } catch (error) {
+        errors++;
+        console.error(`      ❌ Error moviendo deal ${deal.id} a descartados:`, error.message);
+      }
+    }
+
+    console.log(`   📊 Resultado: ${moved} movidos a descartados, ${errors} errores`);
     return { moved, errors };
   }
 
@@ -896,6 +968,7 @@ class ExtractDealmakers {
       // 6. Crear contactos
       console.log('💾 Paso 7: Creando contactos en HubSpot...');
       const contactResults = await this.createContactsInHubSpot(profileData, filteredProfileUrls);
+      const successfullyProcessedUrls = contactResults.processedUrls || new Set();
 
       console.log(`✅ Creados ${contactResults.created} contactos`);
       console.log(`🔄 Actualizados: ${contactResults.updated}`);
@@ -905,11 +978,45 @@ class ExtractDealmakers {
       // 7. Actualizar tracking semanal
       await this.updateWeeklyLimit(contactResults.created + contactResults.updated);
 
-      // 8. Mover deals procesados
-      const successfullyProcessedDeals = dealsToProcess; // Simplificado
+      // 8. Identificar deals procesados exitosamente vs fallidos
+      console.log('📊 Paso 8: Identificando deals procesados exitosamente...');
+
+      const successfullyProcessedDeals = [];
+      const failedDeals = [];
+
+      // Para cada deal del lote original, verificar si su URL fue procesada exitosamente
+      for (const deal of dealsToProcess) {
+        const dealUrls = this.extractUrlsFromDeal(deal);
+
+        // Verificar si al menos una URL del deal fue procesada exitosamente
+        let dealProcessedSuccessfully = false;
+        for (const url of dealUrls) {
+          if (successfullyProcessedUrls.has(url)) {
+            dealProcessedSuccessfully = true;
+            break;
+          }
+        }
+
+        if (dealProcessedSuccessfully) {
+          successfullyProcessedDeals.push(deal);
+        } else {
+          failedDeals.push(deal);
+        }
+      }
+
+      console.log(`✅ Deals procesados exitosamente: ${successfullyProcessedDeals.length}`);
+      console.log(`❌ Deals fallidos (sin información válida): ${failedDeals.length}\n`);
+
+      // 9. Mover deals procesados exitosamente
       if (successfullyProcessedDeals.length > 0) {
-        console.log('📊 Paso 8: Moviendo deals procesados...');
+        console.log('📊 Paso 9: Moviendo deals procesados exitosamente...');
         await this.moveDealsTo11PDM(successfullyProcessedDeals);
+      }
+
+      // 10. Mover deals fallidos a descartados
+      if (failedDeals.length > 0) {
+        console.log('📊 Paso 10: Moviendo deals fallidos a descartados...');
+        await this.moveDealsToDiscarded(failedDeals);
       }
 
       const executionEndTime = Date.now();
@@ -920,12 +1027,14 @@ class ExtractDealmakers {
       console.log(`⏱️  Duración total: ${totalDuration.toFixed(1)} segundos`);
       console.log(`📊 Contactos creados: ${contactResults.created}`);
       console.log(`📊 Contactos actualizados: ${contactResults.updated}`);
-      console.log(`📊 Deals procesados: ${successfullyProcessedDeals.length}`);
+      console.log(`📊 Deals procesados exitosamente: ${successfullyProcessedDeals.length}`);
+      console.log(`🗑️  Deals movidos a descartados: ${failedDeals.length}`);
       console.log('='.repeat(100));
 
       return {
         contactResults,
         dealsProcessed: successfullyProcessedDeals.length,
+        dealsDiscarded: failedDeals.length,
         executionTime: totalDuration
       };
 

@@ -27,6 +27,7 @@ npm run manage-weekly-limit
 - `npm run remove-duplicates` - **Eliminar posts duplicados (uno por persona)**
 - `npm run remove-all-posts` - **🗑️ Eliminar TODOS los posts de linkedin-posts-apify**
 - `npm run return-moved-deals` - Devolver deals al stage original
+- `npm run return-discarded-deals` - **🔄 Retornar deals descartados al stage original**
 - `npm run check-post-in-hubspot` - **🔍 Verificar si un post específico existe en HubSpot**
 
 ## ⚙️ Configuración

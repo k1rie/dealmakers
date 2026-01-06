@@ -26,6 +26,7 @@
     "check-source-deals": "node check-source-stage-deals.js",
     "check-discarded-deals": "node check-discarded-deals.js",
     "fix-missing-contacts": "node fix-missing-contacts.js",
+    "return-discarded-deals": "node return-discarded-deals.js",
     "reset": "node reset-deals.js"
   },
   "keywords": [

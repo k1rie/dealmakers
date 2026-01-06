@@ -554,34 +554,16 @@ class ExtractDealmakers {
     const firstname = profile.firstName.trim();
     const lastname = (profile.lastName || '').trim();
 
-    // Limpiar y validar campos que podrían ser objetos o valores inválidos
-    let jobtitle = profile.position || '';
-    if (typeof jobtitle === 'object' || jobtitle === '[object Object]') {
-      jobtitle = 'No especificado';
-    }
-    jobtitle = this.normalizeString(jobtitle);
-
-    let company = profile.company || '';
-    if (typeof company === 'object' || company === '[object Object]' || company === 'VACÍO') {
-      company = 'No especificado';
-    }
-    company = this.normalizeString(company);
-
     console.log(`   📝 Preparando datos del contacto:`);
     console.log(`      • Nombre: "${firstname}"`);
     console.log(`      • Apellido: "${lastname}"`);
-    console.log(`      • Posición: "${jobtitle}"`);
-    console.log(`      • Compañía: "${company}"`);
+    console.log(`      • LinkedIn: "${profile.linkedinUrl || 'No disponible'}"`);
 
     return {
       properties: {
         firstname: firstname,
         lastname: lastname,
-        linkedin_profile_link: profile.linkedinUrl,
-        jobtitle: jobtitle,
-        company: company,
-        city: profile.location,
-        hs_bio: profile.about
+        linkedin_profile_link: profile.linkedinUrl
       }
     };
   }
@@ -804,7 +786,17 @@ class ExtractDealmakers {
         await new Promise(resolve => setTimeout(resolve, 500));
 
       } catch (error) {
-        const profileName = normalizedProfile.name || 'Sin nombre';
+        // En caso de error, intentar obtener el nombre de diferentes fuentes
+        let profileName = 'Sin nombre';
+        try {
+          if (profile && (profile.firstName || profile.lastName)) {
+            profileName = `${profile.firstName || ''} ${profile.lastName || ''}`.trim();
+          } else if (profile && profile.name) {
+            profileName = profile.name;
+          }
+        } catch (e) {
+          // Si hay error al obtener el nombre, usar el valor por defecto
+        }
         console.error(`   ❌ Error creando contacto para ${profileName}: ${error.message}`);
         errors++;
       }

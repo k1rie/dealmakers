@@ -510,10 +510,21 @@ class ExtractDealmakers {
       }
     }
 
+    // Construir firstName y lastName correctamente
+    let finalFirstName = this.normalizeString(profile.firstName);
+    let finalLastName = this.normalizeString(profile.lastName);
+
+    // Si no tenemos firstName/lastName pero sí tenemos finalName, intentar dividir
+    if (!finalFirstName && !finalLastName && finalName) {
+      const nameParts = finalName.split(' ');
+      finalFirstName = nameParts[0] || '';
+      finalLastName = nameParts.slice(1).join(' ') || '';
+    }
+
     return {
       name: this.normalizeString(finalName),
-      firstName: this.normalizeString(profile.firstName || finalName?.split(' ')[0]),
-      lastName: this.normalizeString(profile.lastName || finalName?.split(' ').slice(1).join(' ')),
+      firstName: finalFirstName,
+      lastName: finalLastName,
       position: this.normalizeString(profile.position || profile.currentPosition || profile.title),
       company: this.normalizeString(profile.company || profile.currentCompany),
       location: this.normalizeString(profile.location),
@@ -535,8 +546,13 @@ class ExtractDealmakers {
    * Preparar datos del contacto
    */
   prepareContactData(profile) {
-    const firstname = profile.firstName || 'Sin nombre';
-    const lastname = profile.lastName || '';
+    // Validar que tengamos al menos un nombre válido
+    if (!profile.firstName || profile.firstName.trim() === '') {
+      throw new Error('Nombre inválido: no se puede crear contacto sin firstName válido');
+    }
+
+    const firstname = profile.firstName.trim();
+    const lastname = (profile.lastName || '').trim();
 
     console.log(`   📝 Preparando datos del contacto:`);
     console.log(`      • Nombre: "${firstname}"`);
@@ -723,8 +739,8 @@ class ExtractDealmakers {
           console.log(`   ❌ SALTANDO: Perfil sin nombre válido (Apify no pudo extraer el nombre)`);
           console.log(`   📋 Datos que SÍ tiene el perfil:`, {
             nombre_completo: normalizedProfile.name || 'ninguno',
-            firstName: profile.firstName || 'ninguno',
-            lastName: profile.lastName || 'ninguno',
+            firstName: normalizedProfile.firstName || 'ninguno',
+            lastName: normalizedProfile.lastName || 'ninguno',
             experiencia: profile.experience?.length || 0,
             educacion: profile.education?.length || 0,
             posicion: normalizedProfile.position || 'ninguna',
@@ -737,6 +753,22 @@ class ExtractDealmakers {
 
         if (!hasValidName && hasValidFirstName) {
           console.log(`   ⚠️  Usando solo firstName/lastName, nombre completo no disponible`);
+        }
+
+        // Validación adicional: si firstname es "Sin nombre", saltar
+        if (contactData.properties.firstname === 'Sin nombre') {
+          console.log(`   ❌ SALTANDO: FirstName es 'Sin nombre' - datos insuficientes de Apify`);
+          console.log(`   📋 Debug - normalizedProfile:`, {
+            name: normalizedProfile.name,
+            firstName: normalizedProfile.firstName,
+            lastName: normalizedProfile.lastName
+          });
+          console.log(`   📋 Debug - profile original:`, {
+            firstName: profile.firstName,
+            lastName: profile.lastName
+          });
+          skipped++;
+          continue;
         }
 
         console.log(`   🔄 Creando contacto para: ${profileName}`);

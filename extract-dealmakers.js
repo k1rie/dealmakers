@@ -1015,17 +1015,19 @@ class ExtractDealmakers {
       // 7. Actualizar tracking semanal
       await this.updateWeeklyLimit(contactResults.created + contactResults.updated);
 
-      // 8. Identificar deals procesados exitosamente vs fallidos
-      console.log('📊 Paso 8: Identificando deals procesados exitosamente...');
+      // 8. LÓGICA PRECISA: Cada deal va según si creó contacto exitosamente
+      console.log('📊 Paso 8: Determinando stage final de cada deal...');
+      console.log(`📊 URLs procesadas exitosamente: ${successfullyProcessedUrls.size}`);
 
       const successfullyProcessedDeals = [];
       const failedDeals = [];
 
-      // Para cada deal del lote original, verificar si su URL fue procesada exitosamente
+      // Para cada deal del lote original, verificar si alguna de sus URLs creó un contacto
       for (const deal of dealsToProcess) {
         const dealUrls = this.extractUrlsFromDeal(deal);
+        const dealName = deal.properties?.dealname || `Deal ${deal.id}`;
 
-        // Verificar si al menos una URL del deal fue procesada exitosamente
+        // Verificar si al menos una URL del deal creó un contacto exitosamente
         let dealProcessedSuccessfully = false;
         for (const url of dealUrls) {
           if (successfullyProcessedUrls.has(url)) {
@@ -1036,8 +1038,10 @@ class ExtractDealmakers {
 
         if (dealProcessedSuccessfully) {
           successfullyProcessedDeals.push(deal);
+          console.log(`✅ ${dealName} → stage de éxito (contacto creado)`);
         } else {
           failedDeals.push(deal);
+          console.log(`❌ ${dealName} → descartados (sin contacto)`);
         }
       }
 

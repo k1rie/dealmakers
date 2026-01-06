@@ -4,29 +4,30 @@ const axios = require('axios');
 const HUBSPOT_TOKEN = process.env.HUBSPOT_TOKEN;
 const HUBSPOT_BASE_URL = 'https://api.hubapi.com';
 
-// IDs de los deals que se movieron a descartados según el último log
-const DEALS_TO_RETURN = [
+// IDs de los deals que se movieron incorrectamente a descartados pero deberían estar en éxito
+const DEALS_TO_MOVE = [
   '53297214122', // Post: Pablo Lazzeri - Post LinkedIn
   '53298969980', // Post: Alejandro Campos - Post LinkedIn
-  '53309151493'  // Post: Leonardo Abranches - Post LinkedIn
+  '53309151493', // Post: Leonardo Abranches - Post LinkedIn
+  '53272542232'  // Post: Saul - Post LinkedIn
 ];
 
 // Configuración del pipeline (igual que en extract-dealmakers.js)
 const PIPELINE_CONFIG = {
   pipelineId: '654720623', // Pipeline: Proyectos
-  sourceStageId: '1169433784', // 13P Posible Oportunidad (fuente de deals)
+  targetStageId: '1259550373', // 11P Agregado en Linkedin (destino)
   discardedStageId: '963342713' // Perdido / Descartado
 };
 
-// Stage de destino (volver al stage de origen)
-const TARGET_STAGE_ID = PIPELINE_CONFIG.sourceStageId; // 13P Posible Oportunidad
+// Stage de destino correcto (11P Agregado en Linkedin)
+const SUCCESS_STAGE_ID = PIPELINE_CONFIG.targetStageId;
 
 /**
  * Mover un deal a un stage específico
  */
 async function moveDealToStage(dealId, stageId) {
   try {
-    console.log(`📤 Moviendo deal ${dealId} al stage ${stageId}...`);
+    console.log(`📤 Moviendo deal ${dealId} al stage ${stageId} (11P Agregado en Linkedin)...`);
 
     const response = await axios.patch(
       `${HUBSPOT_BASE_URL}/crm/v3/objects/deals/${dealId}`,
@@ -56,36 +57,38 @@ async function moveDealToStage(dealId, stageId) {
  * Función principal
  */
 async function main() {
-  console.log('🚀 Iniciando retorno de deals descartados...\n');
+  console.log('🚀 Iniciando corrección de deals movidos incorrectamente...\n');
 
   if (!HUBSPOT_TOKEN) {
     console.error('❌ HUBSPOT_TOKEN no configurado en .env');
     console.log('\n📝 Para configurar el token:');
     console.log('   1. Crear archivo .env en el directorio extract-dealmakers/');
     console.log('   2. Agregar: HUBSPOT_TOKEN=tu_token_real_de_hubspot');
-    console.log('   3. Ejecutar: npm run return-discarded-deals');
+    console.log('   3. Ejecutar: npm run move-to-success-stage');
     process.exit(1);
   }
 
-  console.log('📋 DEALS QUE SE VAN A RETORNAR (del último log):');
-  DEALS_TO_RETURN.forEach((dealId, index) => {
+  console.log('📋 DEALS QUE SE MOVIERON INCORRECTAMENTE A DESCARTADOS:');
+  console.log('(Estos deals sí tuvieron éxito creando contactos y asociaciones)');
+  DEALS_TO_MOVE.forEach((dealId, index) => {
     const names = [
       'Post: Pablo Lazzeri - Post LinkedIn',
       'Post: Alejandro Campos - Post LinkedIn',
-      'Post: Leonardo Abranches - Post LinkedIn'
+      'Post: Leonardo Abranches - Post LinkedIn',
+      'Post: Saul - Post LinkedIn'
     ];
     console.log(`   ${index + 1}. Deal ID: ${dealId} - ${names[index]}`);
   });
 
   console.log(`📋 Pipeline: ${PIPELINE_CONFIG.pipelineId} (Proyectos)`);
-  console.log(`🎯 Stage de destino: ${TARGET_STAGE_ID} (13P Posible Oportunidad)`);
-  console.log(`📊 Total de deals a retornar: ${DEALS_TO_RETURN.length}\n`);
+  console.log(`🎯 Stage de destino correcto: ${SUCCESS_STAGE_ID} (11P Agregado en Linkedin)`);
+  console.log(`📊 Total de deals a corregir: ${DEALS_TO_MOVE.length}\n`);
 
   let successCount = 0;
   let errorCount = 0;
 
-  for (const dealId of DEALS_TO_RETURN) {
-    const success = await moveDealToStage(dealId, TARGET_STAGE_ID);
+  for (const dealId of DEALS_TO_MOVE) {
+    const success = await moveDealToStage(dealId, SUCCESS_STAGE_ID);
 
     if (success) {
       successCount++;
@@ -100,10 +103,11 @@ async function main() {
   console.log('\n📊 RESULTADO FINAL:');
   console.log(`✅ Exitosos: ${successCount}`);
   console.log(`❌ Errores: ${errorCount}`);
-  console.log(`📋 Total procesados: ${DEALS_TO_RETURN.length}`);
+  console.log(`📋 Total procesados: ${DEALS_TO_MOVE.length}`);
 
-  if (successCount === DEALS_TO_RETURN.length) {
-    console.log('\n🎉 Todos los deals descartados han sido retornados exitosamente!');
+  if (successCount === DEALS_TO_MOVE.length) {
+    console.log('\n🎉 Todos los deals han sido movidos al stage correcto!');
+    console.log('   Ahora están en "11P Agregado en Linkedin" donde debían estar.');
   } else {
     console.log(`\n⚠️  Se completó el proceso, pero ${errorCount} deals tuvieron errores.`);
   }

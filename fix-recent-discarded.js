@@ -4,29 +4,24 @@ const axios = require('axios');
 const HUBSPOT_TOKEN = process.env.HUBSPOT_TOKEN;
 const HUBSPOT_BASE_URL = 'https://api.hubapi.com';
 
-// IDs de los deals que se movieron a descartados según el último log
-const DEALS_TO_RETURN = [
-  '53297214122', // Post: Pablo Lazzeri - Post LinkedIn
-  '53298969980', // Post: Alejandro Campos - Post LinkedIn
-  '53309151493'  // Post: Leonardo Abranches - Post LinkedIn
+// Deals que se movieron incorrectamente a descartados en la última ejecución
+const DEALS_TO_FIX = [
+  '53179084044', // Post: Eduardo González García - Post LinkedIn
+  '53312920088', // Post: Isidro - Post LinkedIn
+  '53304057610', // Post: Fernando - Post LinkedIn
+  '53304575526', // Post: Martha - Post LinkedIn
+  '53304744475'  // Post: Karla - Post LinkedIn
 ];
 
-// Configuración del pipeline (igual que en extract-dealmakers.js)
-const PIPELINE_CONFIG = {
-  pipelineId: '654720623', // Pipeline: Proyectos
-  sourceStageId: '1169433784', // 13P Posible Oportunidad (fuente de deals)
-  discardedStageId: '963342713' // Perdido / Descartado
-};
-
-// Stage de destino (volver al stage de origen)
-const TARGET_STAGE_ID = PIPELINE_CONFIG.sourceStageId; // 13P Posible Oportunidad
+// Stage correcto (11P Agregado en Linkedin)
+const CORRECT_STAGE_ID = '1259550373';
 
 /**
  * Mover un deal a un stage específico
  */
 async function moveDealToStage(dealId, stageId) {
   try {
-    console.log(`📤 Moviendo deal ${dealId} al stage ${stageId}...`);
+    console.log(`📤 Moviendo deal ${dealId} al stage correcto ${stageId}...`);
 
     const response = await axios.patch(
       `${HUBSPOT_BASE_URL}/crm/v3/objects/deals/${dealId}`,
@@ -43,7 +38,7 @@ async function moveDealToStage(dealId, stageId) {
       }
     );
 
-    console.log(`✅ Deal ${dealId} movido exitosamente al stage ${stageId}`);
+    console.log(`✅ Deal ${dealId} movido correctamente`);
     return true;
 
   } catch (error) {
@@ -56,36 +51,37 @@ async function moveDealToStage(dealId, stageId) {
  * Función principal
  */
 async function main() {
-  console.log('🚀 Iniciando retorno de deals descartados...\n');
+  console.log('🔧 Corrigiendo deals movidos incorrectamente a descartados...\n');
 
   if (!HUBSPOT_TOKEN) {
     console.error('❌ HUBSPOT_TOKEN no configurado en .env');
     console.log('\n📝 Para configurar el token:');
     console.log('   1. Crear archivo .env en el directorio extract-dealmakers/');
     console.log('   2. Agregar: HUBSPOT_TOKEN=tu_token_real_de_hubspot');
-    console.log('   3. Ejecutar: npm run return-discarded-deals');
+    console.log('   3. Ejecutar: npm run fix-recent-discarded');
     process.exit(1);
   }
 
-  console.log('📋 DEALS QUE SE VAN A RETORNAR (del último log):');
-  DEALS_TO_RETURN.forEach((dealId, index) => {
+  console.log('📋 Deals que se movieron incorrectamente a descartados:');
+  DEALS_TO_FIX.forEach((dealId, index) => {
     const names = [
-      'Post: Pablo Lazzeri - Post LinkedIn',
-      'Post: Alejandro Campos - Post LinkedIn',
-      'Post: Leonardo Abranches - Post LinkedIn'
+      'Post: Eduardo González García - Post LinkedIn',
+      'Post: Isidro - Post LinkedIn',
+      'Post: Fernando - Post LinkedIn',
+      'Post: Martha - Post LinkedIn',
+      'Post: Karla - Post LinkedIn'
     ];
     console.log(`   ${index + 1}. Deal ID: ${dealId} - ${names[index]}`);
   });
 
-  console.log(`📋 Pipeline: ${PIPELINE_CONFIG.pipelineId} (Proyectos)`);
-  console.log(`🎯 Stage de destino: ${TARGET_STAGE_ID} (13P Posible Oportunidad)`);
-  console.log(`📊 Total de deals a retornar: ${DEALS_TO_RETURN.length}\n`);
+  console.log(`\n🎯 Stage correcto: ${CORRECT_STAGE_ID} (11P Agregado en Linkedin)`);
+  console.log(`📊 Total de deals a corregir: ${DEALS_TO_FIX.length}\n`);
 
   let successCount = 0;
   let errorCount = 0;
 
-  for (const dealId of DEALS_TO_RETURN) {
-    const success = await moveDealToStage(dealId, TARGET_STAGE_ID);
+  for (const dealId of DEALS_TO_FIX) {
+    const success = await moveDealToStage(dealId, CORRECT_STAGE_ID);
 
     if (success) {
       successCount++;
@@ -97,16 +93,20 @@ async function main() {
     await new Promise(resolve => setTimeout(resolve, 500));
   }
 
-  console.log('\n📊 RESULTADO FINAL:');
+  console.log('\n📊 RESULTADO DE LA CORRECCIÓN:');
   console.log(`✅ Exitosos: ${successCount}`);
   console.log(`❌ Errores: ${errorCount}`);
-  console.log(`📋 Total procesados: ${DEALS_TO_RETURN.length}`);
+  console.log(`📋 Total procesados: ${DEALS_TO_FIX.length}`);
 
-  if (successCount === DEALS_TO_RETURN.length) {
-    console.log('\n🎉 Todos los deals descartados han sido retornados exitosamente!');
+  if (successCount === DEALS_TO_FIX.length) {
+    console.log('\n🎉 Todos los deals han sido movidos al stage correcto!');
+    console.log('   Ahora están en "11P Agregado en Linkedin" donde debían estar.');
   } else {
     console.log(`\n⚠️  Se completó el proceso, pero ${errorCount} deals tuvieron errores.`);
   }
+
+  console.log('\n💡 NOTA: La lógica del script principal también fue corregida.');
+  console.log('   En futuras ejecuciones, los deals irán automáticamente al stage correcto.');
 }
 
 // Ejecutar si se llama directamente

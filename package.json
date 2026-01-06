@@ -27,6 +27,9 @@
     "check-discarded-deals": "node check-discarded-deals.js",
     "fix-missing-contacts": "node fix-missing-contacts.js",
     "return-discarded-deals": "node return-discarded-deals.js",
+    "move-to-success-stage": "node move-to-success-stage.js",
+    "count-discarded-posts": "node count-discarded-posts.js",
+    "fix-recent-discarded": "node fix-recent-discarded.js",
     "reset": "node reset-deals.js"
   },
   "keywords": [

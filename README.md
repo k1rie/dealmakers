@@ -27,7 +27,10 @@ npm run manage-weekly-limit
 - `npm run remove-duplicates` - **Eliminar posts duplicados (uno por persona)**
 - `npm run remove-all-posts` - **🗑️ Eliminar TODOS los posts de linkedin-posts-apify**
 - `npm run return-moved-deals` - Devolver deals al stage original
-- `npm run return-discarded-deals` - **🔄 Retornar deals descartados al stage original**
+- `npm run return-discarded-deals` - **🔄 Retornar deals descartados al stage original (pipeline específica)**
+- `npm run move-to-success-stage` - **✅ Mover deals exitosos al stage correcto (pipeline específica)**
+- `npm run count-discarded-posts` - **📊 Contar deals de posts en descartados (pipeline específica)**
+- `npm run fix-recent-discarded` - **🔧 Corregir deals movidos incorrectamente a descartados**
 - `npm run check-post-in-hubspot` - **🔍 Verificar si un post específico existe en HubSpot**
 
 ## ⚙️ Configuración
@@ -49,6 +52,12 @@ MAX_DEALS_PER_WEEK=1000
 ```
 
 ## 🎯 Funcionalidades
+
+### 📊 Lógica de Procesamiento de Deals
+- **Evaluación individual**: Cada deal se evalúa por separado según si creó un contacto exitosamente
+- **Stage correcto**: Si alguna URL del deal creó un contacto → va a "11P Agregado en Linkedin"
+- **Descartados**: Si ninguna URL del deal creó un contacto → va a "Perdido / Descartado"
+- **Ejemplo**: Si procesas 5 deals y 4 crearon contactos, 4 van al stage correcto y 1 va a descartados
 
 - ✅ Extracción automática de URLs de LinkedIn desde deals
 - ✅ Filtrado de perfiles existentes

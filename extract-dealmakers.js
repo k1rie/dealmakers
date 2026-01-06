@@ -161,6 +161,11 @@ class ExtractDealmakers {
                   propertyName: 'pipeline',
                   operator: 'EQ',
                   value: PIPELINE_CONFIG.pipelineId
+                },
+                {
+                  propertyName: 'dealname',
+                  operator: 'CONTAINS_TOKEN',
+                  value: 'Post:'
                 }
               ]
             }
@@ -475,10 +480,25 @@ class ExtractDealmakers {
    * Normalizar datos del perfil
    */
   normalizeProfileData(profile) {
+    // Intentar extraer nombre de múltiples fuentes
+    let extractedName = profile.name || profile.fullName || profile.authorName;
+
+    // Si no hay nombre básico, intentar extraer de otros campos comunes en Apify
+    if (!extractedName) {
+      if (profile.userName) extractedName = profile.userName;
+      if (profile.displayName) extractedName = profile.displayName;
+      if (profile.fullname) extractedName = profile.fullname;
+      if (profile.username) extractedName = profile.username;
+      // Algunos perfiles pueden tener el nombre en el título de la página
+      if (profile.title && profile.title.includes(' - ')) {
+        extractedName = profile.title.split(' - ')[0];
+      }
+    }
+
     return {
-      name: this.normalizeString(profile.name || profile.fullName || profile.authorName),
-      firstName: this.normalizeString(profile.firstName || profile.name?.split(' ')[0]),
-      lastName: this.normalizeString(profile.lastName || profile.name?.split(' ').slice(1).join(' ')),
+      name: this.normalizeString(extractedName),
+      firstName: this.normalizeString(profile.firstName || extractedName?.split(' ')[0]),
+      lastName: this.normalizeString(profile.lastName || extractedName?.split(' ').slice(1).join(' ')),
       position: this.normalizeString(profile.position || profile.currentPosition || profile.title),
       company: this.normalizeString(profile.company || profile.currentCompany),
       location: this.normalizeString(profile.location),
@@ -609,14 +629,18 @@ class ExtractDealmakers {
         console.log(`   👤 Procesando perfil: ${profileName}`);
         console.log(`   🔗 URL: ${linkedinUrl}`);
 
-        // Mostrar diagnóstico si faltan datos importantes
-        if (!normalizedProfile.name || !normalizedProfile.firstName) {
-          console.log(`   ⚠️  Datos faltantes del perfil Apify:`);
-          console.log(`      • Nombre completo: "${normalizedProfile.name || 'VACÍO'}"`);
-          console.log(`      • First name: "${normalizedProfile.firstName || 'VACÍO'}"`);
-          console.log(`      • Last name: "${normalizedProfile.lastName || 'VACÍO'}"`);
-          console.log(`      • Posición: "${normalizedProfile.position || 'VACÍO'}"`);
-          console.log(`   📋 Datos crudos de Apify:`, JSON.stringify(profile, null, 2));
+        // Mostrar diagnóstico detallado de datos disponibles
+        console.log(`   📊 Datos disponibles:`);
+        console.log(`      • Nombre completo: "${normalizedProfile.name || 'VACÍO'}"`);
+        console.log(`      • Posición: "${normalizedProfile.position || 'VACÍO'}"`);
+        console.log(`      • Compañía: "${normalizedProfile.company || 'VACÍO'}"`);
+        console.log(`      • Experiencia laboral: ${profile.experience ? profile.experience.length + ' entradas' : 'VACÍO'}`);
+        console.log(`      • Educación: ${profile.education ? profile.education.length + ' entradas' : 'VACÍO'}`);
+
+        // Si no tiene nombre pero sí tiene otros datos, mostrar warning
+        if (!normalizedProfile.name && (profile.experience?.length > 0 || profile.education?.length > 0)) {
+          console.log(`   ⚠️  PERFIL CON DATOS PERO SIN NOMBRE - Posible error de scraping Apify`);
+          console.log(`   📋 Campos disponibles en Apify:`, Object.keys(profile).join(', '));
         }
 
         if (!linkedinUrl) {
@@ -660,8 +684,14 @@ class ExtractDealmakers {
         if (!contactData.properties.firstname ||
             contactData.properties.firstname === 'Sin nombre' ||
             !contactData.properties.firstname.trim()) {
-          console.log(`   ❌ SALTANDO: Perfil sin nombre válido (posible error de scraping Apify)`);
-          console.log(`   📋 Datos incompletos del perfil Apify:`, JSON.stringify(normalizedProfile, null, 2));
+          console.log(`   ❌ SALTANDO: Perfil sin nombre válido (Apify no pudo extraer el nombre)`);
+          console.log(`   📋 Datos que SÍ tiene el perfil:`, {
+            experiencia: profile.experience?.length || 0,
+            educacion: profile.education?.length || 0,
+            posicion: normalizedProfile.position || 'ninguna',
+            compania: normalizedProfile.company || 'ninguna',
+            ubicacion: normalizedProfile.location || 'ninguna'
+          });
           skipped++;
           continue;
         }

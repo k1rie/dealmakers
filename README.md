@@ -51,6 +51,7 @@ MAX_DEALS_PER_WEEK=1000
 - ✅ Extracción automática de URLs de LinkedIn desde deals
 - ✅ Filtrado de perfiles existentes
 - ✅ Scraping con Apify
+- ✅ **Filtrado por prefijo "Post:"** (solo deals de linkedin-posts-apify)
 - ✅ Análisis con OpenAI (persona vs empresa)
 - ✅ **Filtrado de perfiles sin nombre válido**
 - ✅ **Logging detallado de errores de Apify**
@@ -59,25 +60,63 @@ MAX_DEALS_PER_WEEK=1000
 - ✅ Movimiento automático de deals
 - ✅ Límite semanal configurable
 - ✅ **Eliminación de posts duplicados**
+- ✅ **Devolución de deals movidos por error**
 
 ## 🔍 Mejoras de Validación y Logging
 
 ### ✅ Filtrado de Perfiles Inválidos
 - **No crea contactos** con nombre "Sin nombre"
 - **Salta automáticamente** perfiles sin datos válidos de Apify
+- **Intenta extraer nombre** de múltiples campos de Apify
 - **Mejor logging** cuando faltan datos importantes
 
 ### 📊 Logging Detallado
-Cuando Apify falla al scrapear un perfil, muestra:
+Ahora muestra información completa de cada perfil procesado:
 ```
-⚠️  Datos faltantes del perfil Apify:
-   • Nombre completo: "VACÍO"
-   • First name: "VACÍO"
-   • Last name: "VACÍO"
-   • Posición: "VACÍO"
-📋 Datos crudos de Apify: {...}
-❌ SALTANDO: Perfil sin nombre válido (posible error de scraping Apify)
+👤 Procesando perfil: [Nombre]
+🔗 URL: https://www.linkedin.com/in/...
+📊 Datos disponibles:
+   • Nombre completo: "Juan Pérez"
+   • Posición: "CEO"
+   • Compañía: "Tech Corp"
+   • Experiencia laboral: 5 entradas
+   • Educación: 2 entradas
 ```
+
+Cuando un perfil tiene datos pero no nombre:
+```
+⚠️  PERFIL CON DATOS PERO SIN NOMBRE - Posible error de scraping Apify
+📋 Campos disponibles en Apify: experience, education, skills, ...
+❌ SALTANDO: Perfil sin nombre válido (Apify no pudo extraer el nombre)
+📋 Datos que SÍ tiene el perfil: {
+  experiencia: 5,
+  educacion: 2,
+  posicion: "VP Business Development",
+  compania: "Amaryllis Payment Solutions"
+}
+```
+
+## 🔄 Devolución de Deals Movidos por Error
+
+Si `extract-dealmakers` movió deals que NO tienen "Post:" en el nombre (medicamentos, otros productos, etc.), puedes devolverlos:
+
+```bash
+# Ver qué deals serán devueltos (sin devolver)
+npm run return-moved-deals
+
+# Devolver deals movidos por error (con confirmación)
+npm run return-moved-deals -- --confirm
+```
+
+### ✅ ¿Qué hace?
+- Busca deals en **11P Agregado en Linkedin** que NO tienen "Post:" en el nombre
+- Los devuelve a **13P Posible Oportunidad**
+- Preserva los deals legítimos de linkedin-posts-apify
+
+### 🎯 ¿Por qué usar esto?
+- `extract-dealmakers` ahora filtra solo deals con "Post:" en el nombre
+- Deals anteriores sin filtro fueron movidos por error
+- Este script corrige esos movimientos accidentales
 
 ## 🗑️ Eliminación de Posts Duplicados (desde log de extract-dealmakers)
 

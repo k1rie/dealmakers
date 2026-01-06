@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * Script para devolver deals al stage original (13P Posible Oportunidad)
+ * Script para devolver deals que NO TIENEN "Post:" al stage original (13P Posible Oportunidad)
+ * Solo devuelve deals que fueron movidos por error (medicamentos, etc.)
  */
 
 require('dotenv').config();
@@ -17,54 +18,106 @@ const PIPELINE_CONFIG = {
 };
 
 /**
- * Devolver deals al stage original
+ * Obtener deals que fueron movidos por error (sin prefijo "Post:")
  */
-async function returnMovedDeals() {
-  console.log('🔄 DEVOLVIENDO DEALS AL STAGE 13P POSIBLE OPORTUNIDAD');
+async function getDealsToReturn() {
+  console.log('🔍 Buscando deals que fueron movidos por error...');
+  console.log('   (Deals en 11P Agregado en Linkedin que NO tienen "Post:" en el nombre)');
   console.log('='.repeat(80));
 
   try {
-    // Obtener deals en el stage destino (11P)
-    const response = await axios.post(
-      `${HUBSPOT_BASE_URL}/crm/v3/objects/deals/search`,
-      {
+    let allDeals = [];
+    let after = null;
+    const limit = 100;
+
+    do {
+      const params = {
+        limit: limit,
+        properties: ['dealname', 'dealstage', 'pipeline'],
         filterGroups: [
           {
             filters: [
               {
                 propertyName: 'dealstage',
                 operator: 'EQ',
-                value: PIPELINE_CONFIG.targetStageId
+                value: PIPELINE_CONFIG.targetStageId // 11P Agregado en Linkedin
               },
               {
                 propertyName: 'pipeline',
                 operator: 'EQ',
                 value: PIPELINE_CONFIG.pipelineId
+              },
+              {
+                propertyName: 'dealname',
+                operator: 'NOT_CONTAINS_TOKEN',
+                value: 'Post:'
               }
             ]
           }
-        ],
-        properties: ['dealname'],
-        limit: 100
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${HUBSPOT_TOKEN}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
+        ]
+      };
 
-    const deals = response.data.results || [];
+      if (after) {
+        params.after = after;
+      }
+
+      const response = await axios.post(
+        `${HUBSPOT_BASE_URL}/crm/v3/objects/deals/search`,
+        params,
+        {
+          headers: {
+            'Authorization': `Bearer ${HUBSPOT_TOKEN}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      const deals = response.data.results || [];
+      allDeals = allDeals.concat(deals);
+
+      after = response.data.paging?.next?.after;
+
+      if (after) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+    } while (after);
+
+    return allDeals;
+
+  } catch (error) {
+    console.error('❌ Error obteniendo deals:', error.response?.data?.message || error.message);
+    return [];
+  }
+}
+
+/**
+ * Devolver deals al stage original
+ */
+async function returnMovedDeals() {
+  console.log('🔄 DEVOLVIENDO DEALS AL STAGE 13P POSIBLE OPORTUNIDAD');
+  console.log('   Solo deals que NO tienen "Post:" en el nombre');
+  console.log('='.repeat(80));
+
+  try {
+    // Obtener deals que deben ser devueltos
+    const deals = await getDealsToReturn();
 
     if (deals.length === 0) {
-      console.log('ℹ️  No hay deals en el stage 11P para devolver');
+      console.log('✅ No hay deals que devolver - todos los deals en 11P tienen "Post:"');
+      console.log('   Esto significa que no hubo movimientos por error.');
       return;
     }
 
     console.log(`📦 Deals a devolver: ${deals.length}`);
     console.log(`🎯 Origen actual: 11P Agregado en Linkedin (${PIPELINE_CONFIG.targetStageId})`);
     console.log(`📍 Destino: 13P Posible Oportunidad (${PIPELINE_CONFIG.sourceStageId})`);
+    console.log('');
+
+    console.log('📋 Lista de deals que serán devueltos:');
+    deals.forEach(deal => {
+      console.log(`   • ${deal.properties?.dealname || `Deal ${deal.id}`}`);
+    });
     console.log('');
 
     let returned = 0;

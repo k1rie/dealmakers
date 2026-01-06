@@ -554,19 +554,32 @@ class ExtractDealmakers {
     const firstname = profile.firstName.trim();
     const lastname = (profile.lastName || '').trim();
 
+    // Limpiar y validar campos que podrían ser objetos o valores inválidos
+    let jobtitle = profile.position || '';
+    if (typeof jobtitle === 'object' || jobtitle === '[object Object]') {
+      jobtitle = 'No especificado';
+    }
+    jobtitle = this.normalizeString(jobtitle);
+
+    let company = profile.company || '';
+    if (typeof company === 'object' || company === '[object Object]' || company === 'VACÍO') {
+      company = 'No especificado';
+    }
+    company = this.normalizeString(company);
+
     console.log(`   📝 Preparando datos del contacto:`);
     console.log(`      • Nombre: "${firstname}"`);
     console.log(`      • Apellido: "${lastname}"`);
-    console.log(`      • Posición: "${profile.position || 'No especificado'}"`);
-    console.log(`      • Compañía: "${profile.company || 'No especificado'}"`);
+    console.log(`      • Posición: "${jobtitle}"`);
+    console.log(`      • Compañía: "${company}"`);
 
     return {
       properties: {
         firstname: firstname,
         lastname: lastname,
         linkedin_profile_link: profile.linkedinUrl,
-        jobtitle: profile.position,
-        company: profile.company,
+        jobtitle: jobtitle,
+        company: company,
         city: profile.location,
         hs_bio: profile.about
       }
@@ -791,7 +804,7 @@ class ExtractDealmakers {
         await new Promise(resolve => setTimeout(resolve, 500));
 
       } catch (error) {
-        const profileName = profile.name || 'Sin nombre';
+        const profileName = normalizedProfile.name || 'Sin nombre';
         console.error(`   ❌ Error creando contacto para ${profileName}: ${error.message}`);
         errors++;
       }

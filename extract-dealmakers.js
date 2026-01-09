@@ -25,10 +25,11 @@ const PIPELINE_CONFIG = {
   discardedStageId: '963342713' // Perdido / Descartado (para deals fallidos)
 };
 
-/**
- * Script para extraer perfiles de LinkedIn desde deals de posts y crear contactos en HubSpot
- * Utiliza Apify para obtener información detallada de perfiles de LinkedIn
- */
+  /**
+   * Script para extraer perfiles de LinkedIn desde deals y crear contactos en HubSpot
+   * Los links de perfil están siempre en la propiedad 'link_original_de_la_noticia'
+   * Utiliza Apify para obtener información detallada de perfiles de LinkedIn
+   */
 class ExtractDealmakers {
   constructor() {
     this.client = new ApifyClient({
@@ -268,57 +269,40 @@ class ExtractDealmakers {
   async extractProfileUrlsFromDeals(deals) {
     const profileUrls = new Map();
 
-    console.log(`   👤 Extrayendo perfiles del DUEÑO del post de ${deals.length} deals...`);
+    console.log(`   👤 Extrayendo perfiles de LinkedIn de ${deals.length} deals...`);
 
     for (const deal of deals) {
       const props = deal.properties || {};
-      const description = props.description?.value || props.description || '';
+      const linkOriginal = props.link_original_de_la_noticia?.value || props.link_original_de_la_noticia || '';
 
-      if (description) {
-        let profileMatches = [];
+      let profileMatches = [];
 
-        // PRIORIDAD 1: Extraer perfiles desde URLs de posts (dueño del post)
-        console.log(`   🔍 Buscando URLs de posts en deal ${deal.id}...`);
-        const postLinks = description.match(/https?:\/\/(?:www\.)?linkedin\.com\/posts\/[^\s<>"']+/gi) || [];
-        console.log(`   📝 Encontradas ${postLinks.length} URLs de posts`);
+      // EXTRAER DIRECTAMENTE de link_original_de_la_noticia (siempre es URL de perfil)
+      if (linkOriginal && linkOriginal.trim()) {
+        console.log(`   🎯 Link de perfil encontrado en link_original_de_la_noticia: ${linkOriginal} (deal ${deal.id})`);
 
-        postLinks.forEach(postLink => {
-          const username = this.extractUsernameFromPostUrl(postLink);
-          if (username) {
-            const profileUrl = `https://www.linkedin.com/in/${username}`;
-            console.log(`   👤 Extraído perfil del autor: ${profileUrl} (de ${postLink})`);
-            profileMatches.push(profileUrl);
-          } else {
-            console.log(`   ⚠️ No se pudo extraer username de: ${postLink}`);
-          }
-        });
-
-        // REMOVIDO: Ya no busca en link_original_de_la_noticia, solo en descripción
-
-        // PRIORIDAD 3: Si aún no hay perfil, buscar específicamente perfiles (solo como fallback)
-        if (profileMatches.length === 0) {
-          console.log(`   ⚠️ No se encontraron URLs de posts. Buscando perfiles mencionados...`);
-          const profilePatterns = [
-            /https?:\/\/(?:www\.)?linkedin\.com\/in\/[^\/\s<>"'\?\#]+/gi,
-            /https?:\/\/(?:www\.)?linkedin\.com\/company\/[^\/\s<>"'\?\#]+/gi,
-            /https?:\/\/(?:www\.)?linkedin\.com\/school\/[^\/\s<>"'\?\#]+/gi
-          ];
-
-          profilePatterns.forEach(pattern => {
-            const matches = description.match(pattern);
-            if (matches) {
-              profileMatches = profileMatches.concat(matches);
-              console.log(`   📝 Encontrado perfil alternativo: ${matches[0]}`);
-            }
-          });
+        // Normalizar URL (asegurar que empiece con https://)
+        let normalizedUrl = linkOriginal.trim();
+        if (!normalizedUrl.startsWith('http')) {
+          normalizedUrl = `https://${normalizedUrl}`;
         }
 
-        // Solo tomar UNA URL por deal (la más relevante)
-        if (profileMatches.length > 1) {
-          console.log(`   ⚠️ Se encontraron ${profileMatches.length} URLs. Usando solo la primera (autor del post)`);
+        // Validar que sea una URL de perfil válida (aunque según el usuario siempre lo es)
+        if (normalizedUrl.includes('linkedin.com/in/') ||
+            normalizedUrl.includes('linkedin.com/company/') ||
+            normalizedUrl.includes('linkedin.com/school/')) {
+          profileMatches.push(normalizedUrl);
+          console.log(`   ✅ URL de perfil válida: ${normalizedUrl}`);
+        } else {
+          console.log(`   ⚠️ URL no válida de perfil: ${normalizedUrl}`);
         }
+      } else {
+        console.log(`   ⚠️ No se encontró link_original_de_la_noticia en deal ${deal.id}`);
+      }
 
-        if (profileMatches.length > 0) {
+      // NO HAY FALLBACK - siempre debe estar en link_original_de_la_noticia
+
+      if (profileMatches.length > 0) {
           const selectedUrl = profileMatches[0]; // Solo la primera/más relevante
           const cleanUrl = selectedUrl.split('?')[0].split('#')[0];
 
@@ -340,9 +324,6 @@ class ExtractDealmakers {
         } else {
           console.log(`   ❌ Deal ${deal.id}: No se encontró perfil de LinkedIn`);
         }
-      } else {
-        console.log(`   ❌ Deal ${deal.id}: Sin descripción`);
-      }
     }
 
     const result = Array.from(profileUrls.values());

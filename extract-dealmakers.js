@@ -530,25 +530,51 @@ class ExtractDealmakers {
     const firstname = profile.firstName.trim();
     const lastname = (profile.lastName || '').trim();
 
-    // Extraer información adicional
+    // Extraer información de cargo y empresa
+    let jobTitle = '';
+    let companyName = '';
     let companyWebsite = null;
-    let jobTitle = profile.position || '';
 
-    // Intentar extraer website de la empresa de currentPosition si está disponible
+    // Primero intentar extraer de currentPosition (posición actual)
     if (profile.currentPosition && profile.currentPosition.length > 0) {
       const currentPos = profile.currentPosition[0];
-      if (currentPos.company && currentPos.company.website) {
-        companyWebsite = currentPos.company.website;
-      } else if (currentPos.companyWebsite) {
-        companyWebsite = currentPos.companyWebsite;
+      if (currentPos.position) {
+        jobTitle = currentPos.position;
       }
+      if (currentPos.companyName) {
+        companyName = currentPos.companyName;
+      }
+      // Intentar extraer website de companyLinkedinUrl
+      if (currentPos.companyLinkedinUrl) {
+        companyWebsite = currentPos.companyLinkedinUrl.replace('/company/', '/').replace('https://www.linkedin.com', 'https://linkedin.com');
+      }
+    }
+
+    // Si no tenemos información de currentPosition, usar experience (experiencia laboral)
+    if ((!jobTitle || !companyName) && profile.experience && profile.experience.length > 0) {
+      const latestExperience = profile.experience[0]; // La primera experiencia es la más reciente
+      if (!jobTitle && latestExperience.position) {
+        jobTitle = latestExperience.position;
+      }
+      if (!companyName && latestExperience.companyName) {
+        companyName = latestExperience.companyName;
+      }
+      // Intentar extraer website de companyLinkedinUrl
+      if (!companyWebsite && latestExperience.companyLinkedinUrl) {
+        companyWebsite = latestExperience.companyLinkedinUrl.replace('/company/', '/').replace('https://www.linkedin.com', 'https://linkedin.com');
+      }
+    }
+
+    // Si aún no tenemos website, usar el array de websites del perfil
+    if (!companyWebsite && profile.websites && profile.websites.length > 0) {
+      companyWebsite = profile.websites[0];
     }
 
     console.log(`   📝 Preparando datos del contacto:`);
     console.log(`      • Nombre: "${firstname}"`);
     console.log(`      • Apellido: "${lastname}"`);
-    console.log(`      • Cargo: "${jobTitle}"`);
-    console.log(`      • Empresa: "${profile.company || 'No disponible'}"`);
+    console.log(`      • Cargo: "${jobTitle || 'No disponible'}"`);
+    console.log(`      • Empresa: "${companyName || 'No disponible'}"`);
     console.log(`      • LinkedIn: "${profile.linkedinUrl || 'No disponible'}"`);
     console.log(`      • Website empresa: "${companyWebsite || 'No disponible'}"`);
 
@@ -558,7 +584,7 @@ class ExtractDealmakers {
         lastname: lastname,
         linkedin: profile.linkedinUrl,
         jobtitle: jobTitle,
-        company: profile.company || '',
+        company: companyName,
         website: companyWebsite || '',
         n3_3__que_cargo_s__o_funcion_es__desempenan_dentro_de_la_organizacion____puedes_incluir_una_breve_d: jobTitle
       }

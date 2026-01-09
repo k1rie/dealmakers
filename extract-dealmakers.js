@@ -829,6 +829,33 @@ class ExtractDealmakers {
     return { created, updated, skipped, errors, processedUrls, updatedUrls: this.updatedUrls };
   }
 
+  async moveDealToStage(dealId, targetStageId) {
+    try {
+      console.log(`   📍 Moviendo deal ${dealId} al stage ${targetStageId}`);
+
+      await axios.patch(
+        `${HUBSPOT_BASE_URL}/crm/v3/objects/deals/${dealId}`,
+        {
+          properties: {
+            dealstage: targetStageId
+          }
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${HUBSPOT_TOKEN}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      console.log(`   ✅ Deal movido exitosamente al stage ${targetStageId}`);
+      return true;
+    } catch (error) {
+      console.error(`   ❌ Error moviendo deal ${dealId}:`, error.message);
+      throw error;
+    }
+  }
+
   /**
    * Mover deals al stage de destino
    */

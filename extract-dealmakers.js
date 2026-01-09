@@ -148,15 +148,15 @@ class ExtractDealmakers {
    * Buscar deals válidos en HubSpot
    * @param {number} maxDeals - Máximo número de deals a obtener (opcional)
    */
-  async getDealsWithValidPosts(maxDeals = null) {
-    console.log(`🔍 [DEBUG] Buscando deals en pipeline ${PIPELINE_CONFIG.pipelineId}, stage ${PIPELINE_CONFIG.sourceStageId}${maxDeals ? ` (máx. ${maxDeals})` : ''}`);
+  async getAllDealsFromSourceStage(maxDeals = null) {
+    console.log(`🔍 Buscando TODOS los deals en pipeline ${PIPELINE_CONFIG.pipelineId}, stage ${PIPELINE_CONFIG.sourceStageId}${maxDeals ? ` (máx. ${maxDeals})` : ''}`);
 
     try {
       let allDeals = [];
       let after = null;
       const limit = 100;
 
-      // Obtener todos los deals con paginación
+      // Obtener todos los deals del stage fuente (sin filtrar por nombre)
       do {
         const params = {
           limit: limit,
@@ -173,11 +173,6 @@ class ExtractDealmakers {
                   propertyName: 'pipeline',
                   operator: 'EQ',
                   value: PIPELINE_CONFIG.pipelineId
-                },
-                {
-                  propertyName: 'dealname',
-                  operator: 'CONTAINS_TOKEN',
-                  value: 'Post:'
                 }
               ]
             }
@@ -220,42 +215,11 @@ class ExtractDealmakers {
 
       } while (after);
 
-      console.log(`✅ [SUCCESS] Total deals encontrados: ${allDeals.length}`);
+      console.log(`✅ [SUCCESS] Total deals encontrados en stage fuente: ${allDeals.length}`);
 
-      // Filtrar deals que tienen URLs válidas
-      const validDeals = [];
-
-      for (const deal of allDeals) {
-        const props = deal.properties || {};
-        const description = props.description || '';
-        const postLink = props.link_original_de_la_noticia || '';
-
-        // Buscar URLs de LinkedIn
-        const linkedinRegex = /https?:\/\/(?:www\.)?linkedin\.com\/[^\s<>"']+/gi;
-        const linkedinUrls = description.match(linkedinRegex) || [];
-        if (postLink && postLink.includes('linkedin.com')) {
-          linkedinUrls.push(postLink);
-        }
-
-        // También buscar formato especial "Profile URL: [URL]"
-        const profileUrlMatch = description.match(/Profile URL:\s*(https?:\/\/(?:www\.)?linkedin\.com\/[^\s<>"']+)/gi);
-        if (profileUrlMatch) {
-          profileUrlMatch.forEach(match => {
-            const urlMatch = match.match(/Profile URL:\s*(https?:\/\/(?:www\.)?linkedin\.com\/[^\s<>"']+)/i);
-            if (urlMatch && urlMatch[1]) {
-              linkedinUrls.push(urlMatch[1]);
-            }
-          });
-        }
-
-        if (linkedinUrls.length > 0) {
-          validDeals.push(deal);
-        }
-      }
-
-      console.log(`🎯 [INFO] Deals con URLs válidas: ${validDeals.length}/${allDeals.length}`);
-
-      return validDeals;
+      // Devolver TODOS los deals del stage fuente (no filtrar por URLs válidas)
+      // Cada deal será procesado individualmente más tarde
+      return allDeals;
 
     } catch (error) {
       console.error('❌ Error obteniendo deals:', error.message);
@@ -992,6 +956,127 @@ class ExtractDealmakers {
   }
 
   /**
+   * Procesar deals individualmente: crear contacto y asociar al deal
+   */
+  async processDealsAndCreateContacts(deals) {
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+    let errors = 0;
+
+    console.log(`   Procesando ${deals.length} deals individualmente...`);
+
+    for (let i = 0; i < deals.length; i++) {
+      const deal = deals[i];
+      const dealId = deal.id;
+      const dealName = deal.properties?.dealname || `Deal ${dealId}`;
+      const linkOriginal = deal.properties?.link_original_de_la_noticia?.value || deal.properties?.link_original_de_la_noticia || '';
+
+      console.log(`   [${i + 1}/${deals.length}] Procesando deal: ${dealName}`);
+
+      // Verificar si el deal tiene link_original_de_la_noticia
+      if (!linkOriginal || !linkOriginal.trim()) {
+        console.log(`   ⏭️  Deal sin link_original_de_la_noticia, saltando`);
+        skipped++;
+        continue;
+      }
+
+      try {
+        // Normalizar URL
+        let normalizedUrl = linkOriginal.trim();
+        if (!normalizedUrl.startsWith('http')) {
+          normalizedUrl = `https://${normalizedUrl}`;
+        }
+
+        // Verificar que sea URL de perfil válida
+        if (!normalizedUrl.includes('linkedin.com/in/') &&
+            !normalizedUrl.includes('linkedin.com/company/') &&
+            !normalizedUrl.includes('linkedin.com/school/')) {
+          console.log(`   ⚠️  URL no válida: ${normalizedUrl}`);
+          skipped++;
+          continue;
+        }
+
+        console.log(`   🔗 URL de perfil: ${normalizedUrl}`);
+
+        // Verificar si ya existe un contacto con esta URL
+        const existingContact = await this.checkExistingContact({ linkedinUrl: normalizedUrl });
+
+        let contactId;
+        let contactCreated = false;
+
+        if (existingContact) {
+          console.log(`   🔄 Contacto existente encontrado (ID: ${existingContact.id})`);
+          contactId = existingContact.id;
+          updated++;
+        } else {
+          // Crear nuevo contacto usando Apify para obtener datos completos
+          console.log(`   👤 Creando nuevo contacto...`);
+
+          // Obtener datos del perfil con Apify
+          const profileData = await this.scrapeProfilesWithApify([{ url: normalizedUrl }]);
+
+          if (profileData.length === 0) {
+            console.log(`   ❌ No se pudieron obtener datos del perfil con Apify`);
+            errors++;
+            continue;
+          }
+
+          // Crear el contacto
+          const contactData = this.prepareContactData(profileData[0]);
+          const contactResponse = await this.createContact(contactData);
+
+          if (contactResponse) {
+            contactId = contactResponse.id;
+            contactCreated = true;
+            created++;
+            console.log(`   ✅ Contacto creado exitosamente (ID: ${contactId})`);
+          } else {
+            console.log(`   ❌ Error creando contacto`);
+            errors++;
+            continue;
+          }
+        }
+
+        // Asociar el contacto al deal
+        if (contactId) {
+          console.log(`   🔗 Asociando contacto ${contactId} al deal ${dealId}`);
+          await this.createAssociation(dealId, contactId);
+
+          // Mover deal al stage de destino
+          console.log(`   📍 Moviendo deal al stage de destino (${PIPELINE_CONFIG.targetStageId})`);
+          await this.moveDealToStage(dealId, PIPELINE_CONFIG.targetStageId);
+
+          console.log(`   🎉 Deal procesado exitosamente\n`);
+        }
+
+      } catch (error) {
+        console.error(`   💥 Error procesando deal ${dealId}:`, error.message);
+        errors++;
+      }
+
+      // Pequeña pausa entre deals para no sobrecargar
+      if (i < deals.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+
+    console.log(`   📊 Resumen del procesamiento:`);
+    console.log(`      ✅ Contactos creados: ${created}`);
+    console.log(`      🔄 Contactos existentes usados: ${updated}`);
+    console.log(`      ⏭️  Deals saltados: ${skipped}`);
+    console.log(`      ❌ Errores: ${errors}`);
+
+    return {
+      created,
+      updated,
+      skipped,
+      errors,
+      totalProcessed: created + updated
+    };
+  }
+
+  /**
    * Ejecutar el proceso completo
    */
   async run() {
@@ -1023,146 +1108,57 @@ class ExtractDealmakers {
       const maxDealsToDownload = weeklyLimitCheck === true ? MAX_DEALS_PER_WEEK : weeklyLimitCheck;
       console.log(`📊 Límite semanal OK: ${maxDealsToDownload} deals disponibles\n`);
 
-      // 2. Obtener deals con posts válidos (limitado)
-      console.log('📋 Paso 2: Buscando deals con links de posts válidos...');
-      const dealsWithPosts = await this.getDealsWithValidPosts(maxDealsToDownload);
+      // 2. Obtener TODOS los deals del stage fuente
+      console.log('📋 Paso 2: Buscando TODOS los deals del stage fuente...');
+      const allDealsFromStage = await this.getAllDealsFromSourceStage(maxDealsToDownload);
 
-      if (dealsWithPosts.length === 0) {
-        console.log('❌ No se encontraron deals con links de posts válidos');
+      if (allDealsFromStage.length === 0) {
+        console.log('❌ No se encontraron deals en el stage fuente');
         return { contactResults: { created: 0, updated: 0, errors: 0 } };
       }
 
-      console.log(`✅ Encontrados ${dealsWithPosts.length} deals con posts válidos\n`);
+      console.log(`✅ Encontrados ${allDealsFromStage.length} deals en el stage fuente\n`);
 
       // 3. Verificar límite semanal final
-      const allowedDeals = await this.checkWeeklyLimit(dealsWithPosts.length);
+      const allowedDeals = await this.checkWeeklyLimit(allDealsFromStage.length);
       if (!allowedDeals || allowedDeals === 0) {
         console.log('❌ Límite semanal alcanzado');
         return { contactResults: { created: 0, updated: 0, errors: 0 } };
       }
 
-      const dealsToProcess = allowedDeals === true ? dealsWithPosts : dealsWithPosts.slice(0, allowedDeals);
+      const dealsToProcess = allowedDeals === true ? allDealsFromStage : allDealsFromStage.slice(0, allowedDeals);
       console.log(`📊 Procesando ${dealsToProcess.length} deals (límite semanal)\n`);
 
-      // 4. Extraer URLs de perfiles Y crear mapeo deal->URLs
-      console.log('👤 Paso 4: Extrayendo URLs de perfiles...');
-      const { profileUrls, dealToUrlsMap } = await this.extractProfileUrlsFromDeals(dealsToProcess);
-
-      if (profileUrls.length === 0) {
-        console.log('❌ No se encontraron URLs de perfiles válidas');
-        return { contactResults: { created: 0, updated: 0, errors: 0 } };
-      }
-
-      console.log(`✅ Extraídas ${profileUrls.length} URLs de perfiles únicas\n`);
-
-      // 4. Filtrar URLs existentes
-      console.log('🔍 Paso 5: Filtrando URLs que ya existen...');
-      const filteredProfileUrls = await this.filterExistingProfileUrls(profileUrls);
-
-      if (filteredProfileUrls.length === 0) {
-        console.log('ℹ️  Todos los perfiles ya existen como contactos');
-        return { contactResults: { created: 0, updated: 0, errors: 0 } };
-      }
-
-      console.log(`✅ ${filteredProfileUrls.length} URLs nuevas para procesar\n`);
-
-      // 5. Scraping con Apify
-      console.log('🔍 Paso 6: Procesando URLs con Apify...');
-      const profileData = await this.scrapeProfilesWithApify(filteredProfileUrls);
-
-      if (profileData.length === 0) {
-        console.log('❌ Apify no devolvió ningún perfil');
-        return { contactResults: { created: 0, updated: 0, errors: 0 } };
-      }
-
-      console.log(`✅ Apify procesó ${profileData.length} perfiles\n`);
-
-      // 6. Crear contactos
-      console.log('💾 Paso 7: Creando contactos en HubSpot...');
-      const contactResults = await this.createContactsInHubSpot(profileData, filteredProfileUrls);
-      const successfullyProcessedUrls = new Set([
-        ...(contactResults.processedUrls || []),
-        ...(contactResults.updatedUrls || [])
-      ]);
+      // 4. Procesar cada deal individualmente: crear contacto y asociar
+      console.log('👤 Paso 4: Procesando deals individualmente...');
+      const contactResults = await this.processDealsAndCreateContacts(dealsToProcess);
 
       console.log(`✅ Creados ${contactResults.created} contactos`);
       console.log(`🔄 Actualizados: ${contactResults.updated}`);
       console.log(`⏭️  Saltados: ${contactResults.skipped}`);
       console.log(`⚠️  Errores: ${contactResults.errors}\n`);
 
-      // 7. Actualizar tracking semanal
-      await this.updateWeeklyLimit(contactResults.created + contactResults.updated);
-
-      // 8. LÓGICA PRECISA: Cada deal se evalúa según si procesó contacto exitosamente (creado O actualizado)
-      console.log('📊 Paso 8: Determinando stage final de cada deal...');
-      console.log(`📊 Contactos creados: ${contactResults.created}`);
-      console.log(`📊 Contactos actualizados: ${contactResults.updated}`);
-      console.log(`📊 URLs procesadas exitosamente: ${successfullyProcessedUrls.size}`);
-
-      const successfullyProcessedDeals = [];
-      const failedDeals = [];
-
-      // Para cada deal, verificar si alguna de sus URLs creó un contacto exitosamente
-      for (const deal of dealsToProcess) {
-        const dealId = deal.id;
-        const dealName = deal.properties?.dealname || `Deal ${dealId}`;
-        const dealUrls = dealToUrlsMap.get(dealId) || [];
-
-        console.log(`🔍 Verificando deal ${dealId}: ${dealName}`);
-        console.log(`   URLs asociadas: ${dealUrls.length > 0 ? dealUrls.join(', ') : 'ninguna'}`);
-
-        // Verificar si alguna URL del deal procesó un contacto exitosamente (creado o actualizado)
-        let dealProcessedSuccessfully = false;
-        for (const url of dealUrls) {
-          if (successfullyProcessedUrls.has(url)) {
-            dealProcessedSuccessfully = true;
-            console.log(`   ✅ URL "${url}" procesó contacto exitosamente (creado/actualizado)`);
-            break;
-          } else {
-            console.log(`   ❌ URL "${url}" no procesó contacto`);
-          }
-        }
-
-        if (dealProcessedSuccessfully) {
-          successfullyProcessedDeals.push(deal);
-          console.log(`   🎯 RESULTADO: Deal va al stage de éxito\n`);
-        } else {
-          failedDeals.push(deal);
-          console.log(`   🎯 RESULTADO: Deal va a descartados\n`);
-        }
-      }
-
-      console.log(`✅ Deals procesados exitosamente: ${successfullyProcessedDeals.length}`);
-      console.log(`❌ Deals fallidos (sin información válida): ${failedDeals.length}\n`);
-
-      // 9. Mover deals procesados exitosamente
-      if (successfullyProcessedDeals.length > 0) {
-        console.log('📊 Paso 9: Moviendo deals procesados exitosamente...');
-        await this.moveDealsTo11PDM(successfullyProcessedDeals);
-      }
-
-      // 10. Mover deals fallidos a descartados
-      if (failedDeals.length > 0) {
-        console.log('📊 Paso 10: Moviendo deals fallidos a descartados...');
-        await this.moveDealsToDiscarded(failedDeals);
-      }
+      // 5. Actualizar tracking semanal
+      await this.updateWeeklyLimit(contactResults.totalProcessed);
 
       const executionEndTime = Date.now();
       const totalDuration = (executionEndTime - executionStartTime) / 1000;
 
-      console.log('='.repeat(100));
-      console.log('✅ EJECUCIÓN COMPLETADA');
-      console.log(`⏱️  Duración total: ${totalDuration.toFixed(1)} segundos`);
-      console.log(`📊 Contactos creados: ${contactResults.created}`);
-      console.log(`📊 Contactos actualizados: ${contactResults.updated}`);
-      console.log(`📊 Deals procesados exitosamente: ${successfullyProcessedDeals.length}`);
-      console.log(`🗑️  Deals movidos a descartados: ${failedDeals.length}`);
-      console.log('='.repeat(100));
+      console.log('\n' + '='.repeat(50));
+      console.log('🎯 RESUMEN FINAL');
+      console.log('=' .repeat(50));
+      console.log(`📊 Total deals procesados: ${dealsToProcess.length}`);
+      console.log(`👤 Contactos creados: ${contactResults.created}`);
+      console.log(`🔄 Contactos actualizados: ${contactResults.updated}`);
+      console.log(`⏭️  Deals saltados: ${contactResults.skipped}`);
+      console.log(`⚠️  Errores: ${contactResults.errors}`);
+      console.log(`⏱️  Tiempo total de ejecución: ${Math.round(totalDuration)} segundos`);
+      console.log('='.repeat(50));
 
       return {
+        success: true,
+        dealsProcessed: dealsToProcess.length,
         contactResults,
-        dealsProcessed: successfullyProcessedDeals.length,
-        dealsDiscarded: failedDeals.length,
         executionTime: totalDuration
       };
 

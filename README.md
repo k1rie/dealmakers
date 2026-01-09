@@ -9,30 +9,11 @@ Script para extraer perfiles de LinkedIn desde deals y crear contactos en HubSpo
 npm install
 
 # Ejecutar el script principal
-npm run extract-dealmakers
+npm start
 
-# Ver estado de deals
-npm run diagnose
-
-# Gestionar límite semanal
-npm run manage-weekly-limit
+# Ver IDs de stages disponibles
+npm run stages
 ```
-
-## 📋 Scripts Disponibles
-
-- `npm run extract-dealmakers` - Ejecutar el proceso completo
-- `npm run diagnose` - Diagnosticar estado de deals
-- `npm run list-pipelines` - Listar pipelines de HubSpot
-- `npm run manage-weekly-limit` - Gestionar límite semanal
-- `npm run remove-duplicates` - **Eliminar posts duplicados (uno por persona)**
-- `npm run remove-all-posts` - **🗑️ Eliminar TODOS los posts de linkedin-posts-apify**
-- `npm run return-moved-deals` - Devolver deals al stage original
-- `npm run return-discarded-deals` - **🔄 Retornar deals descartados al stage original (pipeline específica)**
-- `npm run move-to-success-stage` - **✅ Mover deals exitosos al stage correcto (pipeline específica)**
-- `npm run count-discarded-posts` - **📊 Contar deals de posts en descartados (pipeline específica)**
-- `npm run fix-recent-discarded` - **🔧 Corregir deals movidos incorrectamente a descartados**
-- `npm run fix-updated-contact-deal` - **🔄 Corregir deal movido por actualización de contacto**
-- `npm run check-post-in-hubspot` - **🔍 Verificar si un post específico existe en HubSpot**
 
 ## ⚙️ Configuración
 
@@ -247,3 +228,80 @@ npm run remove-all-posts -- --confirm
 - ✅ **Haz backup** si tienes deals importantes
 - ✅ **Revisa los ejemplos** antes de confirmar
 - ✅ **Usa con precaución**: Este script no discrimina
+
+## 🔍 Consultar Stage de Deal
+
+Consulta rápidamente el stage actual de cualquier deal por su ID:
+
+```bash
+# Usando npm
+npm run check-deal-stage -- 53304577646
+
+# O directamente con node
+node check-deal-stage.js 53304577646
+```
+
+### Ejemplo de salida:
+```
+📊 INFORMACIÓN DEL DEAL:
+══════════════════════════════════════════════════
+🆔 ID: 53304577646
+📝 Nombre: 53304577646: Post: Michelinne Gómez Cifuentes - Post LinkedIn
+🎯 Stage ID: 1259550373
+📍 Stage: 11P Agregado en Linkedin
+✅ Estado: DEAL EXITOSO (11P Agregado en Linkedin)
+💰 Monto: $0
+📅 Fecha creación: 1/6/2026
+🔧 Pipeline: 654720623
+══════════════════════════════════════════════════
+```
+
+### Estados posibles:
+- ✅ **DEAL EXITOSO**: Stage "11P Agregado en Linkedin"
+- ❌ **DEAL DESCARTADO**: Stage "Perdido / Descartado"
+- ⏳ **DEAL EN PROCESO**: Cualquier otro stage del pipeline
+
+## 👤 Consultar Información de Contacto
+
+Consulta información completa de contactos por ID o URL de LinkedIn:
+
+```bash
+# Por ID de contacto
+npm run check-contact-info -- 190681737828
+node check-contact-info.js 190681737828
+
+# Por URL de LinkedIn
+npm run check-contact-info -- linkedin:https://www.linkedin.com/in/johana
+node check-contact-info.js linkedin:https://www.linkedin.com/in/johana
+```
+
+### Ejemplo de salida:
+```
+📊 INFORMACIÓN DEL CONTACTO:
+════════════════════════════════════════════════════════════
+🆔 ID: 190681737828
+👤 Nombre: Alexis Webster
+🔗 LinkedIn: https://www.linkedin.com/in/alexis
+📧 Email: No definido
+📞 Teléfono: No definido
+🏢 Compañía: No definido
+💼 Puesto: No definido
+📍 Ubicación: No definida
+📅 Fecha creación: 6/1/2026
+📅 Última modificación: 6/1/2026
+════════════════════════════════════════════════════════════
+```
+
+### Información mostrada:
+- ✅ **ID único** del contacto
+- ✅ **Nombre completo** (firstname + lastname)
+- ✅ **URL de LinkedIn** guardada
+- ✅ **Email y teléfono** (si existen)
+- ✅ **Compañía y puesto** de trabajo
+- ✅ **Ubicación** (ciudad, estado, país)
+- ✅ **Fechas** de creación y modificación
+
+### 💡 Consejos:
+- **Por LinkedIn URL**: Útil para verificar si un perfil ya fue procesado
+- **Por ID**: Para consultar detalles específicos de un contacto conocido
+- **Manejo de duplicados**: Si encuentra múltiples contactos con la misma URL, lista todos los IDs

@@ -21,7 +21,7 @@ const LINKEDIN_PROFILE_ACTOR_ID = 'LpVuK3Zozwuipa5bp';
 const PIPELINE_CONFIG = {
   pipelineId: '654720623', // Pipeline: Proyectos
   sourceStageId: '1169433784', // 13P Posible Oportunidad (fuente de deals)
-  targetStageId: '1259550373', // 11P Agregado en Linkedin (destino)
+  targetStageId: '1069593191', // Stage de linkedin-cargos-scrapper (destino)
   discardedStageId: '963342713' // Perdido / Descartado (para deals fallidos)
 };
 
@@ -34,9 +34,6 @@ class ExtractDealmakers {
     this.client = new ApifyClient({
       token: APIFY_TOKEN,
     });
-    this.openai = new OpenAI({
-      apiKey: OPENAI_API_KEY,
-    });
     this.processedDeals = new Set();
     this.createdContacts = 0;
     this.updatedContacts = 0;
@@ -45,6 +42,18 @@ class ExtractDealmakers {
     this.personProfiles = 0;
     this.companyProfiles = 0;
     this.weeklyLimitReached = false;
+  }
+
+  /**
+   * Inicializar OpenAI (solo cuando sea necesario)
+   */
+  get openai() {
+    if (!this._openai) {
+      this._openai = new OpenAI({
+        apiKey: OPENAI_API_KEY,
+      });
+    }
+    return this._openai;
   }
 
   /**
@@ -418,14 +427,14 @@ class ExtractDealmakers {
             {
               filters: [
                 {
-                  propertyName: 'linkedin_profile_link',
+                  propertyName: 'linkedin',
                   operator: 'EQ',
                   value: linkedinUrl
                 }
               ]
             }
           ],
-          properties: ['firstname', 'lastname', 'linkedin_profile_link']
+          properties: ['firstname', 'lastname', 'linkedin']
         },
         {
           headers: {
@@ -576,16 +585,37 @@ class ExtractDealmakers {
     const firstname = profile.firstName.trim();
     const lastname = (profile.lastName || '').trim();
 
+    // Extraer información adicional
+    let companyWebsite = null;
+    let jobTitle = profile.position || '';
+
+    // Intentar extraer website de la empresa de currentPosition si está disponible
+    if (profile.currentPosition && profile.currentPosition.length > 0) {
+      const currentPos = profile.currentPosition[0];
+      if (currentPos.company && currentPos.company.website) {
+        companyWebsite = currentPos.company.website;
+      } else if (currentPos.companyWebsite) {
+        companyWebsite = currentPos.companyWebsite;
+      }
+    }
+
     console.log(`   📝 Preparando datos del contacto:`);
     console.log(`      • Nombre: "${firstname}"`);
     console.log(`      • Apellido: "${lastname}"`);
+    console.log(`      • Cargo: "${jobTitle}"`);
+    console.log(`      • Empresa: "${profile.company || 'No disponible'}"`);
     console.log(`      • LinkedIn: "${profile.linkedinUrl || 'No disponible'}"`);
+    console.log(`      • Website empresa: "${companyWebsite || 'No disponible'}"`);
 
     return {
       properties: {
         firstname: firstname,
         lastname: lastname,
-        linkedin_profile_link: profile.linkedinUrl
+        linkedin: profile.linkedinUrl,
+        jobtitle: jobTitle,
+        company: profile.company || '',
+        website: companyWebsite || '',
+        n3_3__que_cargo_s__o_funcion_es__desempenan_dentro_de_la_organizacion____puedes_incluir_una_breve_d: jobTitle
       }
     };
   }
@@ -940,6 +970,47 @@ class ExtractDealmakers {
   }
 
   /**
+   * Obtener información de stages disponibles en el pipeline
+   */
+  async getPipelineStages() {
+    try {
+      console.log(`🔍 Obteniendo stages del pipeline ${PIPELINE_CONFIG.pipelineId}...`);
+
+      const response = await axios.get(
+        `${HUBSPOT_BASE_URL}/crm/v3/pipelines/deals/${PIPELINE_CONFIG.pipelineId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${HUBSPOT_TOKEN}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      const stages = response.data.stages || [];
+      console.log(`\n📊 STAGES DISPONIBLES EN PIPELINE "${response.data.label}" (ID: ${PIPELINE_CONFIG.pipelineId}):\n`);
+
+      stages.forEach((stage, index) => {
+        const marker = stage.id === PIPELINE_CONFIG.sourceStageId ? '📍 FUENTE' :
+                       stage.id === PIPELINE_CONFIG.targetStageId ? '🎯 DESTINO' :
+                       stage.id === PIPELINE_CONFIG.discardedStageId ? '🗑️ DESCARTADO' : '   ';
+
+        console.log(`${index + 1}. ${marker} ${stage.label}`);
+        console.log(`   ID: ${stage.id}`);
+        console.log(`   Estado: ${stage.metadata?.isClosed ? 'Cerrado' : 'Abierto'}`);
+        console.log('');
+      });
+
+      console.log('💡 Para usar un stage específico, actualiza PIPELINE_CONFIG en el código');
+
+      return stages;
+
+    } catch (error) {
+      console.error('❌ Error obteniendo stages del pipeline:', error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Ejecutar el proceso completo
    */
   async run() {
@@ -1124,7 +1195,13 @@ class ExtractDealmakers {
 // Ejecutar si se llama directamente
 if (require.main === module) {
   const extractor = new ExtractDealmakers();
-  extractor.run().catch(console.error);
+  const command = process.argv[2];
+
+  if (command === 'stages') {
+    extractor.getPipelineStages().catch(console.error);
+  } else {
+    extractor.run().catch(console.error);
+  }
 }
 
 module.exports = ExtractDealmakers;

@@ -1009,7 +1009,7 @@ class ExtractDealmakers {
   }
 
   /**
-   * Procesar deals individualmente: crear contacto y asociar al deal
+   * Procesar deals agrupando por URL: crear contacto y asociar TODOS los deals relacionados
    */
   async processDealsAndCreateContacts(deals) {
     let created = 0;
@@ -1017,115 +1017,116 @@ class ExtractDealmakers {
     let skipped = 0;
     let errors = 0;
 
-    console.log(`   Procesando ${deals.length} deals individualmente...`);
+    console.log(`   Procesando ${deals.length} deals agrupando por URL de perfil...`);
 
-    for (let i = 0; i < deals.length; i++) {
-      const deal = deals[i];
-      const dealId = deal.id;
-      const dealName = deal.properties?.dealname || `Deal ${dealId}`;
-      const linkOriginal = deal.properties?.link_original_de_la_noticia?.value || deal.properties?.link_original_de_la_noticia || '';
+    // 1. Extraer URLs de perfil de todos los deals y agrupar por URL
+    const { profileUrls: profileUrlObjects, dealToUrlsMap } = await this.extractProfileUrlsFromDeals(deals);
 
-      console.log(`   [${i + 1}/${deals.length}] Procesando deal: ${dealName}`);
+    if (profileUrlObjects.length === 0) {
+      console.log('❌ No se encontraron URLs de perfil válidas en los deals');
+      return { created: 0, updated: 0, skipped: deals.length, errors: 0, totalProcessed: 0 };
+    }
 
-      // Verificar si el deal tiene link_original_de_la_noticia
-      if (!linkOriginal || !linkOriginal.trim()) {
-        console.log(`   ⏭️  Deal sin link_original_de_la_noticia, saltando`);
-        skipped++;
-        continue;
-      }
+    console.log(`\n   📊 URLs de perfil encontradas: ${profileUrlObjects.length}`);
 
+    // 2. Filtrar URLs que ya existen como contactos (pero mantener la información de deals)
+    const newUrlObjects = [];
+    const existingContactsToAssociate = new Map(); // contactId -> [dealIds]
+
+    for (const profileInfo of profileUrlObjects) {
       try {
-        // Normalizar URL
-        let normalizedUrl = linkOriginal.trim();
-        if (!normalizedUrl.startsWith('http')) {
-          normalizedUrl = `https://${normalizedUrl}`;
-        }
-
-        // Verificar que sea URL de perfil válida
-        if (!normalizedUrl.includes('linkedin.com/in/') &&
-            !normalizedUrl.includes('linkedin.com/company/') &&
-            !normalizedUrl.includes('linkedin.com/school/')) {
-          console.log(`   ⚠️  URL no válida: ${normalizedUrl}`);
-          skipped++;
-          continue;
-        }
-
-        console.log(`   🔗 URL de perfil: ${normalizedUrl}`);
-
-        // Verificar si ya existe un contacto con esta URL
-        const existingContact = await this.checkExistingContact({ linkedinUrl: normalizedUrl });
-
-        let contactId;
-        let contactCreated = false;
+        const mockProfile = { linkedinUrl: profileInfo.url };
+        const existingContact = await this.checkExistingContact(mockProfile);
 
         if (existingContact) {
-          console.log(`   🔄 Contacto existente encontrado (ID: ${existingContact.id})`);
-          contactId = existingContact.id;
+          console.log(`      ⏭️  YA EXISTE como contacto ID: ${existingContact.id} - Asociando deals...`);
+          // Guardar el contacto existente con sus deals para asociar después
+          if (!existingContactsToAssociate.has(existingContact.id)) {
+            existingContactsToAssociate.set(existingContact.id, []);
+          }
+          existingContactsToAssociate.get(existingContact.id).push(...profileInfo.sourceDeals);
           updated++;
         } else {
-          // Crear nuevo contacto usando Apify para obtener datos completos
-          console.log(`   👤 Creando nuevo contacto...`);
-
-          // Obtener datos del perfil con Apify
-          const profileData = await this.scrapeProfilesWithApify([{ url: normalizedUrl }]);
-
-          if (profileData.length === 0) {
-            console.log(`   ❌ No se pudieron obtener datos del perfil con Apify`);
-            errors++;
-            continue;
-          }
-
-          // Crear el contacto
-          const contactData = this.prepareContactData(profileData[0]);
-          const contactResponse = await this.createContact(contactData);
-
-          if (contactResponse) {
-            contactId = contactResponse.id;
-            contactCreated = true;
-            created++;
-            console.log(`   ✅ Contacto creado exitosamente (ID: ${contactId})`);
-          } else {
-            console.log(`   ❌ Error creando contacto`);
-            errors++;
-            continue;
-          }
+          console.log(`      ✅  NUEVA - será procesada por Apify`);
+          newUrlObjects.push(profileInfo);
         }
+      } catch (error) {
+        console.log(`      ❌ Error verificando URL: ${error.message}`);
+        newUrlObjects.push(profileInfo);
+      }
 
-        // Asociar el contacto al deal
-        if (contactId) {
-          console.log(`   🔗 Asociando contacto ${contactId} al deal ${dealId}`);
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    console.log(`\n📊 RESULTADO DEL FILTRADO:`);
+    console.log(`   URLs analizadas: ${profileUrlObjects.length}`);
+    console.log(`   URLs nuevas: ${newUrlObjects.length}`);
+    console.log(`   URLs existentes: ${existingContactsToAssociate.size} contactos únicos`);
+
+    // 3. Procesar URLs nuevas con Apify y crear contactos
+    let newContactsResults = { created: 0, updated: 0, skipped: 0, errors: 0, processedUrls: new Set() };
+    if (newUrlObjects.length > 0) {
+      console.log(`\n   🔍 Procesando ${newUrlObjects.length} perfiles nuevos con Apify...`);
+      const profileData = await this.scrapeProfilesWithApify(newUrlObjects);
+      newContactsResults = await this.createContactsInHubSpot(profileData, newUrlObjects);
+      created += newContactsResults.created;
+    }
+
+    // 4. Asociar contactos existentes a sus deals correspondientes
+    console.log(`\n   🔗 Asociando ${existingContactsToAssociate.size} contactos existentes a sus deals...`);
+
+    for (const [contactId, dealIds] of existingContactsToAssociate) {
+      try {
+        console.log(`      🔗 Asociando contacto ${contactId} a ${dealIds.length} deals...`);
+
+        for (const dealId of dealIds) {
           await this.createAssociation(dealId, contactId);
 
           // Mover deal al stage de destino
-          console.log(`   📍 Moviendo deal al stage de destino (${PIPELINE_CONFIG.targetStageId})`);
           await this.moveDealToStage(dealId, PIPELINE_CONFIG.targetStageId);
-
-          console.log(`   🎉 Deal procesado exitosamente\n`);
+          console.log(`         ✅ Deal ${dealId} asociado y movido`);
         }
 
+        console.log(`      ✅ Contacto ${contactId} asociado exitosamente a ${dealIds.length} deals`);
       } catch (error) {
-        console.error(`   💥 Error procesando deal ${dealId}:`, error.message);
+        console.error(`      ❌ Error asociando contacto ${contactId}:`, error.message);
         errors++;
       }
 
-      // Pequeña pausa entre deals para no sobrecargar
-      if (i < deals.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+      // Pequeña pausa entre contactos
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    // 5. Contar deals procesados correctamente
+    const processedDeals = new Set();
+    for (const contactId of existingContactsToAssociate.keys()) {
+      const dealIds = existingContactsToAssociate.get(contactId);
+      dealIds.forEach(dealId => processedDeals.add(dealId));
+    }
+
+    // Agregar deals de contactos nuevos
+    for (const urlObj of newUrlObjects) {
+      if (newContactsResults.processedUrls.has(urlObj.url)) {
+        urlObj.sourceDeals.forEach(dealId => processedDeals.add(dealId));
       }
     }
 
-    console.log(`   📊 Resumen del procesamiento:`);
+    const totalProcessed = processedDeals.size;
+    const totalSkipped = deals.length - totalProcessed;
+
+    console.log(`\n   📊 Resumen del procesamiento:`);
     console.log(`      ✅ Contactos creados: ${created}`);
-    console.log(`      🔄 Contactos existentes usados: ${updated}`);
-    console.log(`      ⏭️  Deals saltados: ${skipped}`);
-    console.log(`      ❌ Errores: ${errors}`);
+    console.log(`      🔄 Contactos existentes asociados: ${existingContactsToAssociate.size}`);
+    console.log(`      📋 Total deals procesados: ${totalProcessed}`);
+    console.log(`      ⏭️  Deals saltados: ${totalSkipped}`);
+    console.log(`      ❌ Errores: ${errors + newContactsResults.errors}`);
 
     return {
       created,
-      updated,
-      skipped,
-      errors,
-      totalProcessed: created + updated
+      updated: existingContactsToAssociate.size,
+      skipped: totalSkipped,
+      errors: errors + newContactsResults.errors,
+      totalProcessed
     };
   }
 
